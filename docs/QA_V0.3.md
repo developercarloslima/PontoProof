@@ -7,7 +7,7 @@
 - `npm run db:seed`
 - `npm run build`
 - `npm run dev`
-- `/health` retorna `version: 0.3.4`
+- `/health` retorna `version: 0.3.8`
 
 ## Cadastro
 1. Tentar criar colaborador sem captura facial → deve falhar.

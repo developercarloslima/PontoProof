@@ -4,21 +4,67 @@ export type BiometricSample={
   imageDataUrl:string;embedding:number[];faceCount:number;faceQualityScore:number;livenessScore:number;antiSpoofScore:number;livenessChallengePassed:boolean;
 };
 
+export type BiometricEngineStatus='idle'|'loading'|'warming'|'ready'|'error';
+
+type StatusListener=(status:BiometricEngineStatus)=>void;
 let humanPromise:Promise<any>|null=null;
+let engineStatus:BiometricEngineStatus='idle';
+const listeners=new Set<StatusListener>();
+
+function publish(status:BiometricEngineStatus){
+  engineStatus=status;
+  for(const listener of listeners) listener(status);
+}
+
+export function getBiometricEngineStatus(){return engineStatus;}
+export function onBiometricEngineStatus(listener:StatusListener){listeners.add(listener);listener(engineStatus);return()=>{listeners.delete(listener);};}
+
+function createHuman(){
+  return new Human({
+    backend:'webgl',
+    cacheSensitivity:0.65,
+    filter:{enabled:false,equalization:false,flip:false},
+    face:{
+      enabled:true,
+      // Keep up to two faces so the client can reject scenes containing another person.
+      detector:{rotation:true,maxDetected:2,minConfidence:0.45,skipFrames:4,skipTime:180},
+      mesh:{enabled:true,skipFrames:1,skipTime:80},
+      // Our challenges use face-mesh gestures (blink, facing and head up/down), not gaze.
+      // Disabling iris removes an unnecessary model and materially reduces startup/inference cost.
+      iris:{enabled:false},
+      description:{enabled:true,skipFrames:3,skipTime:220},
+      antispoof:{enabled:true,skipFrames:2,skipTime:180},
+      liveness:{enabled:true,skipFrames:2,skipTime:180},
+      emotion:{enabled:false}
+    },
+    body:{enabled:false},hand:{enabled:false},object:{enabled:false},gesture:{enabled:true}
+  } as any);
+}
+
 export function getHuman(){
-  if(!humanPromise) humanPromise=(async()=>{
-    const human:any=new Human({
-      backend:'webgl',modelBasePath:'/models/human/',cacheSensitivity:0.7,
-      filter:{enabled:true,equalization:false,flip:false},
-      face:{enabled:true,detector:{rotation:true,maxDetected:2,minConfidence:0.45},mesh:{enabled:true},iris:{enabled:true},description:{enabled:true},antispoof:{enabled:true},liveness:{enabled:true},emotion:{enabled:false}},
-      body:{enabled:false},hand:{enabled:false},object:{enabled:false},gesture:{enabled:true}
-    } as any);
-    await human.load();
-    await human.warmup();
-    return human;
-  })();
+  if(!humanPromise){
+    humanPromise=(async()=>{
+      try{
+        publish('loading');
+        const human:any=createHuman();
+        await human.load();
+        publish('warming');
+        await human.warmup();
+        publish('ready');
+        return human;
+      }catch(error){
+        // Allow a real retry instead of keeping a rejected Promise forever.
+        humanPromise=null;
+        publish('error');
+        throw error;
+      }
+    })();
+  }
   return humanPromise;
 }
+
+/** Starts model download/WebGL compilation before the camera is needed. */
+export function preloadHuman(){return getHuman();}
 
 export function challengeText(action:string){
   return ({BLINK:'Piscar os olhos',TURN_LEFT:'Virar o rosto para a esquerda',TURN_RIGHT:'Virar o rosto para a direita',HEAD_UP:'Olhar para cima',HEAD_DOWN:'Olhar para baixo'} as Record<string,string>)[action]??'Piscar os olhos';

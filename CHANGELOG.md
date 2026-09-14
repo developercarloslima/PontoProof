@@ -1,3 +1,19 @@
+# v0.3.8
+
+- Otimiza o início do reconhecimento facial no navegador.
+- Modelos biométricos começam a carregar em segundo plano imediatamente após o login/onboarding.
+- A câmera só é aberta depois que o motor facial está pronto, evitando ficar parada em “Preparando reconhecimento facial”.
+- Reduz a captura padrão para 640x480/24fps, diminuindo bastante o custo da inferência local.
+- Desativa somente o modelo de íris, que não é necessário para os desafios atuais (piscar, virar o rosto e mover a cabeça). Face mesh, embedding, liveness e antispoof permanecem obrigatórios.
+- Adiciona cache-first dos modelos Human no Service Worker e Cache-Control de 7 dias no deploy Render.
+- Exibe estado do motor facial (CARREGANDO/OTIMIZANDO/PRONTO) antes de abrir a câmera.
+- Permite nova tentativa real se o carregamento dos modelos falhar.
+
+# v0.3.7
+
+- Render: BIOMETRIC_ENCRYPTION_KEY gerada automaticamente agora e derivada com SHA-256 quando o segredo não estiver em hex/base64 exatos.
+- Mantém compatibilidade com chaves AES-256 explícitas em hex/base64.
+
 # PontoProof v0.3.6
 
 - Deploy de teste preparado para Render via Blueprint (`render.yaml`).

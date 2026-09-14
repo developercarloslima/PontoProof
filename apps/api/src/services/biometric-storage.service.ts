@@ -10,7 +10,11 @@ function encryptionKey() {
     if (/^[a-f0-9]{64}$/i.test(configured)) return Buffer.from(configured, 'hex');
     const b64 = Buffer.from(configured, 'base64');
     if (b64.length === 32) return b64;
-    throw new Error('BIOMETRIC_ENCRYPTION_KEY inválida: use 32 bytes em base64 ou 64 caracteres hexadecimais');
+    // Render's generateValue creates a strong opaque secret, but does not guarantee
+    // a 32-byte base64/64-char hex representation. Derive a fixed AES-256 key
+    // from any sufficiently long generated secret instead of rejecting it.
+    if (configured.length >= 32) return crypto.createHash('sha256').update(configured, 'utf8').digest();
+    throw new Error('BIOMETRIC_ENCRYPTION_KEY inválida: use segredo com pelo menos 32 caracteres, 32 bytes em base64 ou 64 caracteres hexadecimais');
   }
   if(process.env.NODE_ENV==='production') throw new Error('BIOMETRIC_ENCRYPTION_KEY é obrigatória em produção');
   const fallback = process.env.JWT_SECRET ?? 'pontoproof-dev-only-biometric-key';

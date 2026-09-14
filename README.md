@@ -1,4 +1,4 @@
-# PontoProof v0.3.4 — Primeiro acesso biométrico
+# PontoProof v0.3.8 — Primeiro acesso biométrico otimizado
 
 **Sistema operacional de jornada com prova digital de identidade, presença e integridade.**
 
@@ -21,9 +21,11 @@ Estas camadas não podem ser desligadas pelo Admin/RH:
 
 Eventos cobertos: `CLOCK_IN`, `BREAK_START`, `BREAK_END`, `PAUSE_START`, `PAUSE_END`, `CLOCK_OUT`.
 
-## Cadastro do colaborador
+## Cadastro do colaborador e primeiro acesso
 
-Admin/RH não consegue criar um colaborador sem uma captura facial frontal válida. Depois do cadastro é possível adicionar esquerda e direita. A captura valida qualidade, liveness, antispoof e gesto guiado; o servidor guarda a imagem e o embedding criptografados. Trocas revogam a referência anterior e geram auditoria.
+Admin/RH cria o usuário com senha temporária, mas **não cadastra o rosto em nome dele**. No primeiro login, cada usuário troca a senha, reconhece o aviso biométrico, cadastra a própria leitura facial e registra uma credencial WebAuthn/passkey do dispositivo. O backend bloqueia o restante do sistema até a conclusão dessas etapas. A captura facial valida qualidade, liveness, antispoof e gesto guiado; o servidor guarda imagem/evidência e embedding de forma protegida.
+
+Na v0.3.8, o motor facial é pré-carregado em segundo plano logo após o login. A câmera só abre quando os modelos estão prontos, usa resolução de análise mais leve e reaproveita os modelos em cache, reduzindo bastante a espera observada na primeira abertura.
 
 ## Marcação
 

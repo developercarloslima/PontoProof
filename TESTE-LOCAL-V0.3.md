@@ -1,4 +1,4 @@
-# Teste local — PontoProof v0.3.4
+# Teste local — PontoProof v0.3.8
 
 ## Requisitos
 - Windows 10/11

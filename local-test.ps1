@@ -10,7 +10,7 @@ function Require-Command([string]$Name, [string]$Help) {
 
 Write-Host ""
 Write-Host "==============================================" -ForegroundColor Cyan
-Write-Host " PontoProof v0.3.4 - Teste Local Biometrico" -ForegroundColor Cyan
+Write-Host " PontoProof v0.3.8 - Teste Local Biometrico" -ForegroundColor Cyan
 Write-Host "==============================================" -ForegroundColor Cyan
 Write-Host ""
 

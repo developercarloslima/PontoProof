@@ -61,7 +61,7 @@ app.decorate('authenticate', async function(request: any, reply: any) {
 
 declare module 'fastify' { interface FastifyInstance { authenticate: any } }
 
-app.get('/health', async () => ({ ok: true, service: 'pontoproof', version: '0.3.6', at: new Date().toISOString() }));
+app.get('/health', async () => ({ ok: true, service: 'pontoproof', version: '0.3.8', at: new Date().toISOString() }));
 await app.register(authRoutes);
 await app.register(meRoutes);
 await app.register(punchRoutes);
@@ -80,7 +80,9 @@ await app.register(securityRoutes);
 if (process.env.SERVE_WEB === 'true') {
   const currentDir = path.dirname(fileURLToPath(import.meta.url));
   const webDist = path.resolve(currentDir, '../../web/dist');
-  await app.register(fastifyStatic, { root: webDist, prefix: '/' });
+  await app.register(fastifyStatic, { root: webDist, prefix: '/', setHeaders(res:any,filePath:string){
+    if(filePath.includes(`${path.sep}models${path.sep}human${path.sep}`)) res.setHeader('Cache-Control','public, max-age=604800, immutable');
+  } });
 }
 
 app.setErrorHandler((error, _request, reply) => {
