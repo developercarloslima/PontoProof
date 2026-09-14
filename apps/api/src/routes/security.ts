@@ -18,7 +18,7 @@ import { readEncryptedImage } from '../services/biometric-storage.service.js';
 import { acknowledgeBiometricNotice, BIOMETRIC_NOTICE_HASH, BIOMETRIC_NOTICE_TEXT, BIOMETRIC_NOTICE_VERSION, getCurrentAcknowledgement } from '../services/biometric-notice.service.js';
 import { enrollFaceReference } from '../services/face-enrollment.service.js';
 import { refreshOnboardingCompletion } from '../services/onboarding.service.js';
-import { createAsyncFaceEnrollment, publicSubmission, retryFaceEnrollmentSubmission } from '../services/face-enrollment-async.service.js';
+import { createAsyncFaceEnrollment, publicSubmission, recoverLegacyTmpFaceEnrollmentForUser, retryFaceEnrollmentSubmission } from '../services/face-enrollment-async.service.js';
 
 function getWebAuthnConfig(){
   const renderHostname=process.env.RENDER_EXTERNAL_HOSTNAME?.trim();
@@ -56,6 +56,7 @@ async function assertAdmin(request:any, reply:any) {
 
 export async function securityRoutes(app: FastifyInstance) {
   app.get('/security/status', { preHandler:[app.authenticate] }, async (request:any) => {
+    await recoverLegacyTmpFaceEnrollmentForUser(request.user.userId);
     const [policy, credentials, employee, acknowledgement, submission] = await Promise.all([
       getOrCreateSecuritySettings(request.user.tenantId),
       prisma.webAuthnCredential.findMany({ where:{tenantId:request.user.tenantId,userId:request.user.userId}, select:{id:true,label:true,deviceType:true,backedUp:true,createdAt:true,lastUsedAt:true} }),
@@ -99,6 +100,7 @@ export async function securityRoutes(app: FastifyInstance) {
 
   app.get('/security/face-enrollment/submission/latest', { preHandler:[app.authenticate] }, async (request:any, reply) => {
     if(!request.user.employeeId)return reply.code(403).send({error:'Usuário sem vínculo de colaborador'});
+    await recoverLegacyTmpFaceEnrollmentForUser(request.user.userId);
     const row=await prisma.faceEnrollmentSubmission.findFirst({where:{tenantId:request.user.tenantId,employeeId:request.user.employeeId,userId:request.user.userId},orderBy:{submittedAt:'desc'}});
     return {submission:row?publicSubmission(row):null};
   });

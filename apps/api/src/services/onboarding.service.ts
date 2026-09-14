@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma.js';
+import { recoverLegacyTmpFaceEnrollmentForUser } from './face-enrollment-async.service.js';
 
 export type OnboardingState = {
   required: boolean;
@@ -15,6 +16,10 @@ export type OnboardingState = {
 };
 
 export async function getOnboardingState(userId: string): Promise<OnboardingState> {
+  // Recover legacy Render /tmp jobs before calculating the onboarding step.
+  // This migration only resets the face-photo stage and intentionally preserves
+  // password, biometric notice acknowledgement and WebAuthn credentials.
+  await recoverLegacyTmpFaceEnrollmentForUser(userId);
   const user = await prisma.user.findUnique({
     where: { id: userId },
     include: {

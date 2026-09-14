@@ -5,11 +5,11 @@ import { pathToFileURL } from 'node:url';
 import jpeg from 'jpeg-js';
 import { FacePose, Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
-import { encryptJson, readEncryptedImage, removeEncryptedEvidence, saveEncryptedImageDataUrl } from './biometric-storage.service.js';
+import { decryptDatabaseImage, encryptImageDataUrlForDatabase, encryptJson, readEncryptedImage, removeEncryptedEvidence } from './biometric-storage.service.js';
 import { getOrCreateSecuritySettings } from './security-settings.service.js';
 
 export type EnrollmentPhoto = { pose: FacePose; imageDataUrl: string };
-type StoredPhoto = { pose: FacePose; storageKey: string };
+type StoredPhoto = { pose: FacePose; encryptedData?: string; storageKey?: string; mime?: string; byteLength?: number };
 type ProcessedPhoto = StoredPhoto & { embedding:number[]; quality:number; liveness:number; antiSpoof:number; faceCount:number };
 
 type HumanConstructor = new (config?: any) => any;
@@ -131,7 +131,14 @@ async function detectDecoded(photo:StoredPhoto,decoded:any,human:any):Promise<Pr
 }
 
 async function analyzePhoto(photo:StoredPhoto):Promise<ProcessedPhoto>{
-  const raw=await readEncryptedImage(photo.storageKey);
+  // v0.4.4+: pending enrollment evidence lives encrypted in PostgreSQL so the
+  // worker survives Render sleep/restart/redeploy. storageKey remains only as
+  // backward-compatible fallback for jobs created by older versions.
+  const raw=photo.encryptedData
+    ? decryptDatabaseImage(photo.encryptedData)
+    : photo.storageKey
+      ? await readEncryptedImage(photo.storageKey)
+      : (()=>{ throw new Error('Evidência biométrica temporária ausente'); })();
   const decoded=jpeg.decode(raw,{useTArray:true,formatAsRGBA:true});
   if(!decoded?.width||!decoded?.height||!decoded?.data)throw new Error('Imagem JPEG inválida');
   const human:any=await getServerHuman();
@@ -147,8 +154,8 @@ export async function createAsyncFaceEnrollment(input:{tenantId:string;employeeI
   const stored:StoredPhoto[]=[];
   try{
     for(const photo of input.photos){
-      const saved=await saveEncryptedImageDataUrl(photo.imageDataUrl,`enroll-queue-${input.employeeId}-${photo.pose}`);
-      stored.push({pose:photo.pose,storageKey:saved.storageKey});
+      const saved=encryptImageDataUrlForDatabase(photo.imageDataUrl);
+      stored.push({pose:photo.pose,encryptedData:saved.encryptedData,mime:saved.mime,byteLength:saved.byteLength});
     }
     return await prisma.$transaction(async tx=>{
       await tx.employee.update({where:{id:input.employeeId},data:{faceEnrollmentStatus:'PENDING',faceEnrolledAt:null}});
@@ -156,7 +163,10 @@ export async function createAsyncFaceEnrollment(input:{tenantId:string;employeeI
       await tx.auditEvent.create({data:{tenantId:input.tenantId,actorUserId:input.userId,action:'FACE_ENROLLMENT_SUBMITTED',entityType:'FaceEnrollmentSubmission',entityId:submission.id,metadataJson:{poses:required,processing:'ASYNC_SERVER_WASM'}}});
       return submission;
     });
-  }catch(err){await Promise.all(stored.map(x=>removeEncryptedEvidence(x.storageKey)));throw err;}
+  }catch(err){
+    await Promise.all(stored.map(x=>x.storageKey?removeEncryptedEvidence(x.storageKey):Promise.resolve()));
+    throw err;
+  }
 }
 
 function publicSubmission(row:any){
@@ -164,24 +174,53 @@ function publicSubmission(row:any){
 }
 export { publicSubmission };
 
-async function markNeedsRetake(submission:any, reasons:any[]){
+function usesLegacyTmpEvidence(row:any){
+  const images=Array.isArray(row?.imagesJson)?row.imagesJson as StoredPhoto[]:[];
+  return images.some(photo=>Boolean(photo?.storageKey)&&!photo?.encryptedData);
+}
+
+async function markNeedsRetake(submission:any, reasons:any[], auditAction='FACE_ENROLLMENT_NEEDS_RETAKE'){
   const images=(submission.imagesJson??[]) as StoredPhoto[];
-  await Promise.all(images.map(x=>removeEncryptedEvidence(x.storageKey)));
-  await prisma.$transaction([
-    prisma.faceEnrollmentSubmission.update({where:{id:submission.id},data:{status:'NEEDS_RETAKE',progress:100,reasonsJson:reasons as any,processedAt:new Date()}}),
+  await Promise.all(images.map(x=>x.storageKey?removeEncryptedEvidence(x.storageKey):Promise.resolve()));
+  const [updated]=await prisma.$transaction([
+    prisma.faceEnrollmentSubmission.update({where:{id:submission.id},data:{status:'NEEDS_RETAKE',progress:100,reasonsJson:reasons as any,imagesJson:[] as any,processedAt:new Date(),processingStartedAt:null}}),
     prisma.employee.update({where:{id:submission.employeeId},data:{faceEnrollmentStatus:'NOT_ENROLLED',faceEnrolledAt:null}}),
-    prisma.auditEvent.create({data:{tenantId:submission.tenantId,actorUserId:submission.userId,action:'FACE_ENROLLMENT_NEEDS_RETAKE',entityType:'FaceEnrollmentSubmission',entityId:submission.id,metadataJson:{reasons}}})
+    prisma.auditEvent.create({data:{tenantId:submission.tenantId,actorUserId:submission.userId,action:auditAction,entityType:'FaceEnrollmentSubmission',entityId:submission.id,metadataJson:{reasons,scope:'FACE_ONLY',passwordPreserved:true,biometricNoticePreserved:true,webauthnPreserved:true}}})
   ]);
+  return updated;
+}
+
+/**
+ * Migração automática dos jobs criados antes da persistência das fotos no
+ * PostgreSQL. Esses jobs apontavam para o filesystem efêmero do Render (/tmp).
+ * Ao detectar esse formato, somente a etapa facial volta para recaptura: senha,
+ * ciência biométrica e credenciais WebAuthn/passkey permanecem intactas.
+ */
+export async function recoverLegacyTmpFaceEnrollmentForUser(userId:string){
+  const user=await prisma.user.findUnique({where:{id:userId},select:{tenantId:true,employee:{select:{id:true}}}});
+  if(!user?.employee?.id)return null;
+  const row=await prisma.faceEnrollmentSubmission.findFirst({
+    where:{tenantId:user.tenantId,employeeId:user.employee.id,userId,status:{in:['PENDING','PROCESSING','FAILED']}},
+    orderBy:{submittedAt:'desc'}
+  });
+  if(!row || !usesLegacyTmpEvidence(row))return row;
+  return markNeedsRetake(row,[{
+    pose:'ALL',
+    code:'LEGACY_TMP_RECAPTURE',
+    message:'As fotos anteriores pertenciam ao armazenamento temporário da versão anterior e não podem mais ser recuperadas. Refazer somente as 3 fotos faciais; sua senha, ciência biométrica e digital/passkey já cadastradas serão preservadas.'
+  }],'FACE_ENROLLMENT_LEGACY_TMP_RECOVERY');
 }
 
 async function approveSubmission(submission:any, photos:ProcessedPhoto[]){
   await prisma.$transaction(async tx=>{
     await tx.faceReference.updateMany({where:{tenantId:submission.tenantId,employeeId:submission.employeeId,revokedAt:null},data:{revokedAt:new Date()}});
     for(const p of photos){
-      await tx.faceReference.create({data:{tenantId:submission.tenantId,employeeId:submission.employeeId,pose:p.pose,storageKey:p.storageKey,embeddingEncrypted:encryptJson(p.embedding),faceQualityScore:p.quality,livenessScore:p.liveness,antiSpoofScore:p.antiSpoof,createdByUserId:submission.userId}});
+      // Reference recognition uses the encrypted embedding. The temporary raw
+      // enrollment photos are intentionally discarded after approval.
+      await tx.faceReference.create({data:{tenantId:submission.tenantId,employeeId:submission.employeeId,pose:p.pose,storageKey:null,embeddingEncrypted:encryptJson(p.embedding),faceQualityScore:p.quality,livenessScore:p.liveness,antiSpoofScore:p.antiSpoof,createdByUserId:submission.userId}});
     }
     await tx.employee.update({where:{id:submission.employeeId},data:{faceEnrollmentStatus:'ACTIVE',faceEnrolledAt:new Date(),faceTemplateVersion:{increment:1},failedBiometricAttempts:0,biometricLockedUntil:null}});
-    await tx.faceEnrollmentSubmission.update({where:{id:submission.id},data:{status:'APPROVED',progress:100,reasonsJson:{message:'As três imagens foram aprovadas pelo processamento facial do servidor'} as any,processedAt:new Date()}});
+    await tx.faceEnrollmentSubmission.update({where:{id:submission.id},data:{status:'APPROVED',progress:100,reasonsJson:{message:'As três imagens foram aprovadas pelo processamento facial do servidor'} as any,imagesJson:[] as any,processedAt:new Date()}});
     await tx.auditEvent.create({data:{tenantId:submission.tenantId,actorUserId:submission.userId,action:'FACE_ENROLLMENT_APPROVED_ASYNC',entityType:'FaceEnrollmentSubmission',entityId:submission.id,metadataJson:{engine:'HUMAN_NODE_WASM',quality:photos.map(p=>({pose:p.pose,quality:p.quality,liveness:p.liveness,antiSpoof:p.antiSpoof}))}}});
   });
 }
@@ -213,8 +252,11 @@ async function processSubmission(submission:any){
     }
     if(reasons.length)return markNeedsRetake(row,reasons);
     return approveSubmission(row,processed);
-  }catch(error){
+  }catch(error:any){
     const message=error instanceof Error?error.message:'Falha desconhecida no processamento facial';
+    if(error?.code==='ENOENT' || /Evidência biométrica temporária ausente|no such file or directory/i.test(message)){
+      return markNeedsRetake(row,[{pose:'ALL',code:'EVIDENCE_EXPIRED',message:'As fotos anteriores não estão mais disponíveis. Faça uma nova captura; as próximas imagens ficarão persistidas com segurança até a análise terminar.'}]);
+    }
     await prisma.faceEnrollmentSubmission.update({where:{id:row.id},data:{status:'FAILED',progress:100,reasonsJson:{code:'PROCESSING_ERROR',message} as any,processedAt:new Date()}});
     await prisma.auditEvent.create({data:{tenantId:row.tenantId,actorUserId:row.userId,action:'FACE_ENROLLMENT_PROCESSING_FAILED',entityType:'FaceEnrollmentSubmission',entityId:row.id,metadataJson:{engine:'HUMAN_NODE_WASM',message}}});
   }
@@ -236,6 +278,15 @@ export async function runFaceEnrollmentWorkerOnce(){
 export async function retryFaceEnrollmentSubmission(input:{tenantId:string;userId:string;submissionId:string}){
   const row=await prisma.faceEnrollmentSubmission.findFirst({where:{id:input.submissionId,tenantId:input.tenantId,userId:input.userId}});
   if(!row)throw new Error('Solicitação facial não encontrada');
+  // Jobs das versões antigas não podem ser reprocessados porque suas fotos
+  // ficavam no /tmp. Em vez de reiniciar todo onboarding, pedimos somente as
+  // três fotos e preservamos senha, ciência biométrica e WebAuthn/passkey.
+  if(usesLegacyTmpEvidence(row)){
+    return markNeedsRetake(row,[{
+      pose:'ALL',code:'LEGACY_TMP_RECAPTURE',
+      message:'As fotos anteriores expiraram durante a atualização do armazenamento. Tire novamente somente as 3 fotos faciais; as demais etapas já concluídas serão mantidas.'
+    }],'FACE_ENROLLMENT_LEGACY_TMP_RECOVERY');
+  }
   if(row.status!=='FAILED')throw new Error('Somente uma análise com erro técnico pode ser reenviada sem novas fotos');
   return prisma.faceEnrollmentSubmission.update({where:{id:row.id},data:{status:'PENDING',progress:5,reasonsJson:Prisma.DbNull,processedAt:null,processingStartedAt:null}});
 }

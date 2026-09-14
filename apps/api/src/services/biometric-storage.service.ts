@@ -47,13 +47,33 @@ export function decryptJson<T>(value: string): T {
   return JSON.parse(decrypt(Buffer.from(value, 'base64')).toString('utf8')) as T;
 }
 
-export async function saveEncryptedImageDataUrl(dataUrl: string, namespace: string) {
+function parseImageDataUrl(dataUrl: string) {
   const match = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl);
   if (!match) throw new Error('Formato de selfie inválido');
   const mime = match[1];
   const raw = Buffer.from(match[2], 'base64');
   if (raw.length < 5_000) throw new Error('Imagem muito pequena para validação');
   if (raw.length > 2_500_000) throw new Error('Imagem biométrica excede 2,5 MB');
+  return { mime, raw };
+}
+
+/**
+ * Persiste temporariamente uma imagem biométrica dentro de um campo Text/JSON do
+ * PostgreSQL. É usado pelo onboarding assíncrono para que o job sobreviva a
+ * sleep/restart/redeploy do Render. O payload permanece AES-256-GCM.
+ */
+export function encryptImageDataUrlForDatabase(dataUrl: string) {
+  const { mime, raw } = parseImageDataUrl(dataUrl);
+  return { encryptedData: encrypt(raw).toString('base64'), mime, byteLength: raw.length };
+}
+
+export function decryptDatabaseImage(encryptedData: string) {
+  if (!encryptedData || encryptedData.length < 40) throw new Error('Imagem biométrica persistida inválida');
+  return decrypt(Buffer.from(encryptedData, 'base64'));
+}
+
+export async function saveEncryptedImageDataUrl(dataUrl: string, namespace: string) {
+  const { mime, raw } = parseImageDataUrl(dataUrl);
   await fs.mkdir(storageRoot, { recursive: true });
   const safeNamespace = namespace.replace(/[^a-zA-Z0-9_-]/g, '_');
   const key = `${safeNamespace}-${crypto.randomUUID()}.bin`;

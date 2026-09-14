@@ -1,4 +1,4 @@
-# PontoProof v0.4.1
+# PontoProof v0.4.5
 
 ## Cadastro facial sem espera (v0.4)
 
@@ -173,3 +173,15 @@ Para testes locais, o seed cria seis contas ativas, todas com senha temporária 
 | Colaborador | `colaborador@demo.com` | `colaborador2@demo.com` |
 
 O papel Supervisor continua disponível no produto, mas não é criado como conta demo neste seed.
+
+
+
+## Recuperação automática das fotos antigas no Render (v0.4.5)
+
+Se um primeiro acesso foi iniciado numa versão que armazenava as fotos faciais em `/tmp`, o PontoProof detecta automaticamente esse job legado. O sistema **não reinicia o onboarding inteiro**: mantém a senha nova, a ciência biométrica e a digital/passkey já cadastrada e volta somente para **frontal → esquerda → direita**.
+
+As novas imagens ficam temporariamente criptografadas no PostgreSQL até o processamento terminar, então sleep, restart ou redeploy do Render não fazem o job perder as fotos novamente. Depois da decisão, as imagens temporárias são removidas e o reconhecimento usa o embedding facial criptografado.
+
+## Persistência do onboarding facial no Render (v0.4.4)
+
+As fotos do cadastro facial assíncrono ficam criptografadas temporariamente no PostgreSQL enquanto aguardam o worker. Isso evita perda de evidência quando o filesystem efêmero do Render é reiniciado. Após a decisão biométrica, as imagens temporárias são removidas e apenas os embeddings criptografados necessários ao reconhecimento permanecem.

@@ -1,3 +1,25 @@
+# Changelog
+
+## 0.4.5 — recuperação seletiva do onboarding facial
+
+- Migração automática dos cadastros faciais iniciados nas versões que salvavam fotos em `/tmp`.
+- Jobs legados `PENDING`, `PROCESSING` ou `FAILED` com evidência temporária são convertidos para `NEEDS_RETAKE`.
+- A recuperação reinicia **somente a etapa das 3 fotos faciais**.
+- Senha já alterada, ciência do uso biométrico e credenciais WebAuthn/passkey permanecem preservadas.
+- O usuário recebe uma mensagem específica explicando que as fotos antigas expiraram por causa da atualização de armazenamento.
+- O botão de retry também detecta jobs legados e encaminha para recaptura facial em vez de entrar em loop de `ENOENT`.
+- Novas capturas continuam criptografadas e persistidas temporariamente no PostgreSQL até o worker concluir a análise.
+- API health/version atualizada para `0.4.5`.
+
+## 0.4.4 — Render biometric persistence fix
+
+- Cadastro facial assíncrono não usa mais `/tmp` para fotos pendentes.
+- As 3 capturas ficam temporariamente criptografadas com AES-256-GCM dentro do PostgreSQL até o worker concluir a análise.
+- Sleep, restart e redeploy do Render não fazem mais o job perder as imagens.
+- Fotos temporárias são removidas do banco após aprovação ou pedido de recaptura.
+- O template facial aprovado permanece como embedding criptografado; a imagem bruta do onboarding não é mantida.
+- Jobs antigos cujo arquivo `/tmp` já desapareceu passam para `NEEDS_RETAKE` com mensagem clara, em vez de entrar em loop de erro técnico.
+
 # PontoProof v0.4.3
 
 - Corrige WebAuthn no Render: RP ID e Origin são resolvidos em tempo de requisição.
