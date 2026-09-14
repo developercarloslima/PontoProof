@@ -1,3 +1,22 @@
+# Changelog
+
+## 0.4.0 - Cadastro facial assíncrono
+
+- O primeiro cadastro facial não carrega mais IA antes de abrir a câmera.
+- Captura rápida de 3 imagens: frontal, esquerda e direita.
+- Fotos são criptografadas e enviadas ao backend imediatamente.
+- Novo `FaceEnrollmentSubmission` persistente no PostgreSQL.
+- Worker assíncrono processa qualidade, face única, liveness passivo, antispoof e embeddings.
+- Validação cruzada garante que as 3 imagens pertencem à mesma identidade.
+- Resultado `APPROVED`, `NEEDS_RETAKE` ou `FAILED` é consultado pelo frontend sem bloquear a tela.
+- Popup informa aprovação ou quais imagens precisam ser refeitas.
+- Erro técnico permite reprocessar as mesmas fotos sem obrigar nova captura.
+- Fotos reprovadas são expurgadas após a decisão; fotos aprovadas viram as referências faciais ativas.
+- O usuário pode cadastrar WebAuthn/passkey enquanto as fotos são processadas.
+- Jobs em andamento são retomados após reinício do processo.
+- Modelos Human deixaram de ser pré-carregados na tela de login/onboarding.
+- A validação facial síncrona das marcações de ponto permanece separada e obrigatória.
+
 # PontoProof v0.3.9
 
 - Câmera biométrica abre imediatamente, sem aguardar modelos de IA.

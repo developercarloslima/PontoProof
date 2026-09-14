@@ -1,4 +1,4 @@
-# Teste local — PontoProof v0.3.8
+# Teste local — PontoProof v0.4.0
 
 ## Requisitos
 - Windows 10/11
@@ -61,3 +61,18 @@ Se a v0.3.2 anterior parar no build da API com `Property role is missing` em `se
 
 ## Fluxo novo da v0.3.4
 Ao entrar com uma conta ainda não configurada (ex.: `colaborador@demo.com` / `Demo@123` em um banco novo), o sistema não abre o painel imediatamente. Ele exige, nesta ordem: troca da senha temporária, ciência do aviso biométrico, leitura facial e cadastro de biometria/passkey do dispositivo. Depois disso o painel é liberado.
+
+
+## Teste do cadastro facial assíncrono (v0.4)
+
+No primeiro acesso, depois de senha e ciência biométrica:
+
+1. clique em **Capturar 3 fotos agora**;
+2. a câmera deve aparecer sem aguardar modelos de IA;
+3. capture frontal, esquerda e direita;
+4. clique em **Enviar fotos para análise**;
+5. a câmera fecha e o passo de WebAuthn/passkey pode ser concluído;
+6. o backend processa em segundo plano;
+7. aguarde o popup **Imagens aprovadas** ou **Precisamos refazer algumas imagens**.
+
+O primeiro processamento no servidor pode demorar mais porque o worker prepara os modelos, mas isso não bloqueia a câmera nem o restante do onboarding.

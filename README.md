@@ -1,6 +1,22 @@
-# PontoProof v0.3.9
+# PontoProof v0.4.0
 
-Esta versão prioriza abertura instantânea da câmera: o preview não espera o motor facial. Os modelos são servidos localmente em `/models/human/`, pré-carregados desde o login e mantidos em cache. Face match, liveness e antispoof continuam obrigatórios.
+## Cadastro facial sem espera (v0.4)
+
+No primeiro acesso, o PontoProof usa um fluxo **capture-first**:
+
+1. a câmera abre imediatamente;
+2. o usuário captura frontal, esquerda e direita;
+3. as imagens são criptografadas e enviadas;
+4. a câmera fecha e o usuário pode configurar a passkey/WebAuthn;
+5. um worker no backend processa as imagens em segundo plano;
+6. o frontend consulta o status e mostra um popup de aprovação ou recaptura.
+
+O processamento servidor verifica face única, qualidade, liveness passivo, antispoof, extrai embeddings e compara as três fotos entre si. Uma falha técnica pode ser reprocessada sem pedir novas fotos. Uma rejeição biométrica pede nova captura e informa os motivos.
+
+> A marcação de ponto continua usando confirmação facial síncrona. O fluxo assíncrono desta versão é para **enrollment/cadastro inicial**, não para aceitar uma batida antes de validar a identidade.
+
+
+Na v0.4 o cadastro inicial não carrega modelos de IA no navegador: a câmera captura três fotos imediatamente e o backend processa em segundo plano. Os modelos em `/models/human/` continuam disponíveis apenas para as validações síncronas de marcação de ponto.
 
 # PontoProof v0.3.8 — Primeiro acesso biométrico otimizado
 
@@ -27,9 +43,7 @@ Eventos cobertos: `CLOCK_IN`, `BREAK_START`, `BREAK_END`, `PAUSE_START`, `PAUSE_
 
 ## Cadastro do colaborador e primeiro acesso
 
-Admin/RH cria o usuário com senha temporária, mas **não cadastra o rosto em nome dele**. No primeiro login, cada usuário troca a senha, reconhece o aviso biométrico, cadastra a própria leitura facial e registra uma credencial WebAuthn/passkey do dispositivo. O backend bloqueia o restante do sistema até a conclusão dessas etapas. A captura facial valida qualidade, liveness, antispoof e gesto guiado; o servidor guarda imagem/evidência e embedding de forma protegida.
-
-Na v0.3.8, o motor facial é pré-carregado em segundo plano logo após o login. A câmera só abre quando os modelos estão prontos, usa resolução de análise mais leve e reaproveita os modelos em cache, reduzindo bastante a espera observada na primeira abertura.
+Admin/RH cria o usuário com senha temporária, mas **não cadastra o rosto em nome dele**. No primeiro login, cada usuário troca a senha, reconhece o aviso biométrico, captura frontal/esquerda/direita e registra uma credencial WebAuthn/passkey do dispositivo. As imagens são enviadas imediatamente e o worker do backend valida face única, qualidade, liveness passivo, antispoof e consistência biométrica entre as fotos. A conclusão do onboarding só ocorre quando a análise facial é aprovada.
 
 ## Marcação
 

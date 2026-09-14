@@ -65,3 +65,18 @@ Se voce ja tiver PostgreSQL local nessa porta, pare-o temporariamente ou altere 
 ## Correção v0.3.2
 
 O schema Prisma foi corrigido para enums multilinha. O teste local agora executa `prisma validate` antes de gerar o client.
+
+
+## Teste do cadastro facial assíncrono (v0.4)
+
+No primeiro acesso, depois de senha e ciência biométrica:
+
+1. clique em **Capturar 3 fotos agora**;
+2. a câmera deve aparecer sem aguardar modelos de IA;
+3. capture frontal, esquerda e direita;
+4. clique em **Enviar fotos para análise**;
+5. a câmera fecha e o passo de WebAuthn/passkey pode ser concluído;
+6. o backend processa em segundo plano;
+7. aguarde o popup **Imagens aprovadas** ou **Precisamos refazer algumas imagens**.
+
+O primeiro processamento no servidor pode demorar mais porque o worker prepara os modelos, mas isso não bloqueia a câmera nem o restante do onboarding.

@@ -19,3 +19,10 @@ declare module '@fastify/jwt' {
     user: PontoProofJwtPayload;
   }
 }
+
+declare module 'jpeg-js' {
+  export type DecodeResult = { width:number; height:number; data:Uint8Array };
+  export function decode(data: Buffer | Uint8Array, options?: Record<string,unknown>): DecodeResult;
+  const jpeg: { decode: typeof decode };
+  export default jpeg;
+}

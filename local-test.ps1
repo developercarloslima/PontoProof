@@ -10,7 +10,7 @@ function Require-Command([string]$Name, [string]$Help) {
 
 Write-Host ""
 Write-Host "==============================================" -ForegroundColor Cyan
-Write-Host " PontoProof v0.3.8 - Teste Local Biometrico" -ForegroundColor Cyan
+Write-Host " PontoProof v0.4.0 - Teste Local Biometrico Assincrono" -ForegroundColor Cyan
 Write-Host "==============================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -46,7 +46,7 @@ for ($i = 0; $i -lt 30; $i++) {
 if (-not $ready) { throw 'PostgreSQL nao ficou pronto. Verifique: docker compose logs postgres' }
 Write-Host 'PostgreSQL OK.' -ForegroundColor Green
 
-Write-Host '[4/7] Instalando dependencias e modelos de reconhecimento facial...' -ForegroundColor Cyan
+Write-Host '[4/7] Instalando dependencias e modelos faciais (cliente + worker do servidor)...' -ForegroundColor Cyan
 npm install --no-audit --no-fund
 if ($LASTEXITCODE -ne 0) { throw 'npm install falhou.' }
 

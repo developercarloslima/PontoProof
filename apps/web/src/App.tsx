@@ -8,11 +8,10 @@ import Audit from './components/Audit';
 import SecurityCenter from './components/SecurityCenter';
 import FirstAccessOnboarding from './components/FirstAccessOnboarding';
 import { api, cacheUser, clearToken, getCachedUser, getToken, SessionUser } from './lib/api';
-import { preloadHuman } from './lib/biometrics';
 
 export default function App(){
  const [user,setUser]=useState<SessionUser|null>(getToken()?getCachedUser():null); const [tab,setTab]=useState('ponto'); const [onboardingChecked,setOnboardingChecked]=useState(false);
- useEffect(()=>{if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(()=>{});preloadHuman().catch(()=>{});},[]);
+ useEffect(()=>{if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(()=>{});},[]);
  useEffect(()=>{if(user?.role==='AUDITOR')setTab('auditoria');},[user?.role]);
  useEffect(()=>{if(!user){setOnboardingChecked(true);return;}setOnboardingChecked(false);api<any>('/auth/onboarding-status').then(onboarding=>{const next={...user,onboarding};cacheUser(next);setUser(next);setOnboardingChecked(true);}).catch(()=>setOnboardingChecked(true));},[user?.id]);
  if(!user)return <Login onLogin={u=>{setUser(u);setOnboardingChecked(true);}}/>;

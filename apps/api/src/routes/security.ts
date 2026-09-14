@@ -18,6 +18,7 @@ import { readEncryptedImage } from '../services/biometric-storage.service.js';
 import { acknowledgeBiometricNotice, BIOMETRIC_NOTICE_HASH, BIOMETRIC_NOTICE_TEXT, BIOMETRIC_NOTICE_VERSION, getCurrentAcknowledgement } from '../services/biometric-notice.service.js';
 import { enrollFaceReference } from '../services/face-enrollment.service.js';
 import { refreshOnboardingCompletion } from '../services/onboarding.service.js';
+import { createAsyncFaceEnrollment, publicSubmission, retryFaceEnrollmentSubmission } from '../services/face-enrollment-async.service.js';
 
 const rpID = process.env.WEBAUTHN_RP_ID ?? 'localhost';
 const rpName = process.env.WEBAUTHN_RP_NAME ?? 'PontoProof';
@@ -36,13 +37,14 @@ async function assertAdmin(request:any, reply:any) {
 
 export async function securityRoutes(app: FastifyInstance) {
   app.get('/security/status', { preHandler:[app.authenticate] }, async (request:any) => {
-    const [policy, credentials, employee, acknowledgement] = await Promise.all([
+    const [policy, credentials, employee, acknowledgement, submission] = await Promise.all([
       getOrCreateSecuritySettings(request.user.tenantId),
       prisma.webAuthnCredential.findMany({ where:{tenantId:request.user.tenantId,userId:request.user.userId}, select:{id:true,label:true,deviceType:true,backedUp:true,createdAt:true,lastUsedAt:true} }),
       request.user.employeeId ? prisma.employee.findUnique({ where:{id:request.user.employeeId}, select:{faceEnrollmentStatus:true,faceEnrolledAt:true,faceTemplateVersion:true} }) : null,
-      getCurrentAcknowledgement(request.user.tenantId, request.user.userId)
+      getCurrentAcknowledgement(request.user.tenantId, request.user.userId),
+      request.user.employeeId ? prisma.faceEnrollmentSubmission.findFirst({where:{tenantId:request.user.tenantId,employeeId:request.user.employeeId},orderBy:{submittedAt:'desc'}}) : null
     ]);
-    return { policy, credentials, employee, acknowledgement, biometricNotice:{version:BIOMETRIC_NOTICE_VERSION,hash:BIOMETRIC_NOTICE_HASH,text:BIOMETRIC_NOTICE_TEXT}, webAuthn:{rpID,origin:expectedOrigin,secureContextRequired:true} }; 
+    return { policy, credentials, employee, acknowledgement, faceEnrollmentSubmission:submission?publicSubmission(submission):null, biometricNotice:{version:BIOMETRIC_NOTICE_VERSION,hash:BIOMETRIC_NOTICE_HASH,text:BIOMETRIC_NOTICE_TEXT}, webAuthn:{rpID,origin:expectedOrigin,secureContextRequired:true} }; 
   });
 
   app.get('/security/biometric-notice', { preHandler:[app.authenticate] }, async (request:any) => {
@@ -62,6 +64,29 @@ export async function securityRoutes(app: FastifyInstance) {
     await prisma.biometricNoticeAcknowledgement.updateMany({where:{tenantId:request.user.tenantId,userId:request.user.userId,revokedAt:null},data:{revokedAt:new Date()}});
     await prisma.auditEvent.create({data:{tenantId:request.user.tenantId,actorUserId:request.user.userId,action:'BIOMETRIC_NOTICE_ACKNOWLEDGEMENT_REVOKED',entityType:'User',entityId:request.user.userId}});
     return {ok:true};
+  });
+
+  app.post('/security/face-enrollment/submit', { preHandler:[app.authenticate] }, async (request:any, reply) => {
+    if(!request.user.employeeId)return reply.code(403).send({error:'Usuário sem vínculo de colaborador'});
+    const user=await prisma.user.findUnique({where:{id:request.user.userId}});
+    if(!user || user.mustChangePassword)return reply.code(409).send({error:'Troque a senha temporária antes de cadastrar o rosto'});
+    const acknowledgement=await getCurrentAcknowledgement(request.user.tenantId,request.user.userId);
+    if(!acknowledgement)return reply.code(409).send({error:'Registre a ciência do aviso biométrico antes do cadastro facial'});
+    const body=z.object({photos:z.array(z.object({pose:z.nativeEnum(FacePose),imageDataUrl:z.string().min(100)})).length(3)}).parse(request.body);
+    const submission=await createAsyncFaceEnrollment({tenantId:request.user.tenantId,employeeId:request.user.employeeId,userId:request.user.userId,photos:body.photos});
+    return reply.code(202).send({submission:publicSubmission(submission),message:'Fotos recebidas. A análise facial continuará no servidor em segundo plano.'});
+  });
+
+  app.get('/security/face-enrollment/submission/latest', { preHandler:[app.authenticate] }, async (request:any, reply) => {
+    if(!request.user.employeeId)return reply.code(403).send({error:'Usuário sem vínculo de colaborador'});
+    const row=await prisma.faceEnrollmentSubmission.findFirst({where:{tenantId:request.user.tenantId,employeeId:request.user.employeeId,userId:request.user.userId},orderBy:{submittedAt:'desc'}});
+    return {submission:row?publicSubmission(row):null};
+  });
+
+  app.post('/security/face-enrollment/submission/:id/retry', { preHandler:[app.authenticate] }, async (request:any, reply) => {
+    const {id}=z.object({id:z.string()}).parse(request.params);
+    try{const row=await retryFaceEnrollmentSubmission({tenantId:request.user.tenantId,userId:request.user.userId,submissionId:id});return {submission:publicSubmission(row)};}
+    catch(error){return reply.code(409).send({error:error instanceof Error?error.message:'Não foi possível reenviar a análise'});}
   });
 
   app.get('/security/face-enrollment/challenge', { preHandler:[app.authenticate] }, async (request:any, reply) => {
@@ -91,11 +116,14 @@ export async function securityRoutes(app: FastifyInstance) {
   });
 
   app.post('/security/webauthn/register/options', { preHandler:[app.authenticate] }, async (request:any, reply) => {
-    const user = await prisma.user.findUniqueOrThrow({ where:{id:request.user.userId}, include:{employee:{select:{faceEnrollmentStatus:true}}} });
+    const user = await prisma.user.findUniqueOrThrow({ where:{id:request.user.userId}, include:{employee:{select:{id:true,faceEnrollmentStatus:true}}} });
     if(user.mustChangePassword)return reply.code(409).send({error:'Troque a senha temporária antes de cadastrar a biometria do dispositivo'});
     const acknowledgement=await getCurrentAcknowledgement(user.tenantId,user.id);
     if(!acknowledgement)return reply.code(409).send({error:'Registre a ciência do aviso biométrico antes de cadastrar a biometria do dispositivo'});
-    if(user.employee?.faceEnrollmentStatus!=='ACTIVE')return reply.code(409).send({error:'Conclua o cadastro facial antes de cadastrar a biometria do dispositivo'});
+    if(user.employee?.faceEnrollmentStatus!=='ACTIVE'){
+      const pending=user.employee ? await prisma.faceEnrollmentSubmission.findFirst({where:{tenantId:user.tenantId,employeeId:user.employee.id,status:{in:['PENDING','PROCESSING','FAILED']}},orderBy:{submittedAt:'desc'}}) : null;
+      if(!pending)return reply.code(409).send({error:'Envie as fotos do cadastro facial antes de cadastrar a biometria do dispositivo'});
+    }
     const existing = await prisma.webAuthnCredential.findMany({ where:{userId:user.id} });
     const options = await generateRegistrationOptions({
       rpName, rpID, userName:user.email, userDisplayName:user.email,

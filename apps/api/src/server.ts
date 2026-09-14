@@ -21,6 +21,7 @@ import { auditRoutes } from './routes/audit.js';
 import { securityRoutes } from './routes/security.js';
 import { runBiometricRetention } from './services/retention.service.js';
 import { getOnboardingState } from './services/onboarding.service.js';
+import { runFaceEnrollmentWorkerOnce } from './services/face-enrollment-async.service.js';
 
 const app = Fastify({ logger: true, bodyLimit: 8 * 1024 * 1024 });
 
@@ -51,9 +52,11 @@ app.decorate('authenticate', async function(request: any, reply: any) {
     '/auth/onboarding-status', '/auth/change-password', '/security/status',
     '/security/biometric-notice', '/security/biometric-notice/acknowledge',
     '/security/face-enrollment/challenge', '/security/face-enrollment',
+    '/security/face-enrollment/submit', '/security/face-enrollment/submission/latest',
     '/security/webauthn/register/options', '/security/webauthn/register/verify'
   ];
-  if (!onboardingAllowed.includes(path)) {
+  const onboardingDynamicAllowed = path.startsWith('/security/face-enrollment/submission/') && path.endsWith('/retry');
+  if (!onboardingAllowed.includes(path) && !onboardingDynamicAllowed) {
     const onboarding = await getOnboardingState(request.user.userId);
     if (!onboarding.completed) return reply.code(428).send({ error: 'Primeiro acesso incompleto. Troque a senha e conclua o cadastro facial e biométrico.', code: 'ONBOARDING_REQUIRED', onboarding });
   }
@@ -61,7 +64,7 @@ app.decorate('authenticate', async function(request: any, reply: any) {
 
 declare module 'fastify' { interface FastifyInstance { authenticate: any } }
 
-app.get('/health', async () => ({ ok: true, service: 'pontoproof', version: '0.3.9', at: new Date().toISOString() }));
+app.get('/health', async () => ({ ok: true, service: 'pontoproof', version: '0.4.0', at: new Date().toISOString() }));
 await app.register(authRoutes);
 await app.register(meRoutes);
 await app.register(punchRoutes);
@@ -99,3 +102,8 @@ await app.listen({ port, host: '0.0.0.0' });
 const retentionTimer=setInterval(()=>runBiometricRetention().then(r=>app.log.info({retention:r},'biometric retention completed')).catch(err=>app.log.error(err,'biometric retention failed')),6*60*60*1000);
 retentionTimer.unref();
 setTimeout(()=>runBiometricRetention().catch(err=>app.log.error(err,'initial biometric retention failed')),15_000).unref();
+
+// Durable asynchronous enrollment worker: jobs live in PostgreSQL and are resumed after restarts.
+const faceWorkerTimer=setInterval(()=>runFaceEnrollmentWorkerOnce().catch(err=>app.log.error(err,'async face enrollment worker failed')),2500);
+faceWorkerTimer.unref();
+setTimeout(()=>runFaceEnrollmentWorkerOnce().catch(err=>app.log.error(err,'initial async face enrollment worker failed')),3000).unref();
