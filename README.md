@@ -1,4 +1,4 @@
-# PontoProof v0.4.0
+# PontoProof v0.4.1
 
 ## Cadastro facial sem espera (v0.4)
 

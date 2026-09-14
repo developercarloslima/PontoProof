@@ -1,7 +1,7 @@
 {
   "name": "pontoproof",
   "private": true,
-  "version": "0.4.0",
+  "version": "0.4.1",
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -33,6 +33,10 @@
     "@prisma/client": true,
     "@prisma/engines": true,
     "esbuild": true,
-    "prisma": true
+    "prisma": true,
+    "@tensorflow/tfjs-backend-wasm": true
+  },
+  "engines": {
+    "node": ">=20 <23"
   }
 }

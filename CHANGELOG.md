@@ -1,3 +1,14 @@
+# PontoProof v0.4.1
+
+## Correção Render / worker facial
+
+- Remove a dependência implícita de `@tensorflow/tfjs-node`, que derrubava a API no Render com `MODULE_NOT_FOUND`.
+- Worker facial passa a carregar **sob demanda** o bundle `human.node-wasm`, compatível com container sem binários nativos do TensorFlow.
+- Adiciona `@tensorflow/tfjs-core`, `@tensorflow/tfjs-converter` e `@tensorflow/tfjs-backend-wasm` 4.22.0.
+- Falha ao inicializar o motor facial não impede mais o servidor HTTP de subir; o job fica como erro técnico e pode ser reprocessado.
+- Corrige limpeza de JSON opcional do Prisma com `Prisma.DbNull`.
+- Mantém o cadastro facial assíncrono: captura rápida no cliente e análise no backend.
+
 # Changelog
 
 ## 0.4.0 - Cadastro facial assíncrono

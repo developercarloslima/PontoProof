@@ -20,12 +20,15 @@
     "@simplewebauthn/server": "^14.0.1",
     "@fastify/static": "^10.1.3",
     "@vladmandic/human": "^3.3.6",
-    "jpeg-js": "^0.4.4"
+    "jpeg-js": "^0.4.4",
+    "@tensorflow/tfjs-core": "4.22.0",
+    "@tensorflow/tfjs-converter": "4.22.0",
+    "@tensorflow/tfjs-backend-wasm": "4.22.0"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
     "tsx": "^4.20.5",
     "typescript": "^5.9.2"
   },
-  "version": "0.4.0"
+  "version": "0.4.1"
 }
