@@ -1,0 +1,10 @@
+{
+  "name": "@pontoproof/presence-gateway",
+  "private": true,
+  "version": "0.3.5",
+  "type": "module",
+  "scripts": {
+    "dev": "node server.mjs",
+    "start": "node server.mjs"
+  }
+}

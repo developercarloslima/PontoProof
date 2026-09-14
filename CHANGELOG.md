@@ -1,0 +1,97 @@
+# v0.3.5
+
+- Seed local agora cria 2 contas ADM, 2 contas RH e 2 contas de colaborador.
+- Mantidos os logins originais como perfil 1 e adicionados `admin2@demo.com`, `rh2@demo.com` e `colaborador2@demo.com`.
+- Todas as seis contas usam senha temporária `Demo@123` e entram no onboarding obrigatório de primeiro acesso.
+- O papel Supervisor continua suportado pelo sistema, mas deixou de ser criado como usuário demo padrão.
+
+# Changelog
+
+## 0.3.3 - 2026-09-13
+
+- Corrige o build TypeScript da rota WebAuthn: o token curto `PUNCH_BIOMETRIC` agora inclui `role` (e `employeeId`) para respeitar o contrato tipado do JWT.
+- Mantém o token biométrico vinculado ao usuário, tenant e `punchChallengeId`; não altera as regras de validação da marcação.
+- Atualiza banner de teste local e versão da API para 0.3.3.
+
+## 0.3.2 - 2026-09-13
+
+- Corrige 7 erros de TypeScript encontrados no primeiro build local da v0.3.1.
+- Corrige checks de permissão com `Role[]` em ajustes, punches e segurança.
+- Atualiza `AuthenticatorTransportFuture` para `AuthenticatorTransport` no SimpleWebAuthn v14.
+- Expande a tipagem do JWT para o token curto `PUNCH_BIOMETRIC`, vinculado ao challenge da marcação.
+- Corrige o tratamento de erro `unknown` no error handler do Fastify.
+- Atualiza a versão reportada pela API para 0.3.2.
+- Mantém intactas as regras de biometria facial, liveness, anti-spoof, WebAuthn, ProofScore e ledger.
+
+## 0.3.1 - correção do teste local
+
+- Corrige os 10 enums do `prisma/schema.prisma` para a sintaxe multilinha aceita pelo Prisma 6.19.x.
+- Adiciona `npm run db:validate` antes de `prisma generate` no teste local.
+- Registra aprovações `allowScripts` para Prisma/esbuild usadas no projeto, evitando os avisos de dependências pendentes do npm 11.
+- Mantém todas as funcionalidades biométricas e de integridade da v0.3.0.
+
+## 0.3.0 — 2026-09-13
+
+### Identidade biométrica
+- Foto frontal obrigatória na criação de colaborador.
+- Referências FRONT/LEFT/RIGHT com revogação auditável.
+- Captura de selfie em entrada, saída, intervalo, retorno, pausa e retorno.
+- Detecção de exatamente um rosto, qualidade, liveness, desafio aleatório e antispoof.
+- Embeddings de referência criptografados; face match calculado pelo servidor.
+- Bloqueio temporário após falhas biométricas repetidas e desbloqueio administrativo auditado.
+
+### WebAuthn
+- Cadastro e revogação de biometria/passkey da plataforma.
+- `userVerification: required` para prova adicional da marcação quando configurada.
+- Credencial pública/counter armazenados; biometria bruta do dispositivo não é recebida.
+
+### Proof Engine
+- ProofScore normalizado por provas aplicáveis/configuradas.
+- Núcleo obrigatório não pode ser desligado por Admin/RH.
+- `APPROVED`, `REVIEW` e `BLOCKED`.
+- Tentativa bloqueada não entra no ledger oficial.
+- Offline com revisão obrigatória e teto de score quando configurado.
+- Correção administrativa identificada como `AJUSTE_ADMINISTRATIVO`, sem fingir prova biométrica retroativa.
+
+### Presença
+- GPS + precisão + geocerca.
+- Sinais de posição antiga, precisão inválida, velocidade extrema e deslocamento implausível.
+- QR dinâmico HMAC.
+- Web Bluetooth e Web NFC quando suportados.
+- Presence Gateway opcional para rede local, com `worksiteId`, `gatewayId`, expiração e nonce assinados.
+
+### Privacidade
+- Aviso biométrico versionado e ciência registrada antes da marcação.
+- Selfies e referências armazenadas cifradas em AES-256-GCM.
+- Volume biométrico persistente separado no deploy.
+- Retenção automática de selfies oficiais sem quebrar o hash do ledger.
+- Retenção de tentativas bloqueadas e expurgo de referências revogadas.
+- Hash de IP/User-Agent no registro de ciência, sem persistência em texto claro nesse evento.
+
+### Gestão e revisão
+- Fila de revisão com selfie da tentativa e foto-base lado a lado.
+- Política de integridade configurável para camadas adicionais.
+- Locais com geocerca, prefixo beacon, NFC e gateway de rede.
+- Painel de colaborador mostra status facial e bloqueio biométrico.
+
+### Operação
+- `local-test.ps1` agora executa build completo antes de iniciar.
+- Dockerfiles corrigidos para postinstall/modelos faciais.
+- `docker-compose.prod.yml` com chaves/variáveis WebAuthn e volume biométrico.
+- Serviço `apps/presence-gateway` incluído.
+
+## 0.2.0 — 2026-09-13
+- Central de gestão, motor de jornada, banco de horas, Jornada Espelho, ledger SHA-256, auditoria, idempotência offline e deploy Docker inicial.
+
+## 0.3.4 - Primeiro acesso biométrico por usuário
+
+- Removida a obrigação de o ADM/RH capturar a foto facial durante o cadastro do colaborador.
+- Todo novo usuário recebe senha temporária e `mustChangePassword=true`.
+- Primeiro login agora é bloqueado por onboarding obrigatório para ADMIN, HR, SUPERVISOR, EMPLOYEE e AUDITOR.
+- Etapas obrigatórias: troca da senha temporária, ciência do aviso biométrico, cadastro facial próprio e cadastro de biometria/passkey do dispositivo via WebAuthn.
+- Backend bloqueia todas as rotas operacionais enquanto o onboarding estiver incompleto; somente as rotas necessárias para concluir o primeiro acesso permanecem disponíveis.
+- Cadastro facial próprio usa challenge de prova de vida, antispoof e armazenamento criptografado já existente.
+- Cadastro WebAuthn usa autenticador de plataforma (Windows Hello, impressão digital, Touch ID, Face ID ou passkey compatível), sem armazenar a impressão digital bruta.
+- Painel de equipe passa a exibir status de primeiro acesso, face e biometria digital.
+- ADM/RH pode revogar a referência facial, mas não cadastrar o rosto em nome do usuário.
+- Seed local deixa de sobrescrever a senha depois que o usuário já fez a troca no primeiro acesso.

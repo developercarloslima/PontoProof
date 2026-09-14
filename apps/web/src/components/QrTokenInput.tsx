@@ -1,0 +1,7 @@
+import { useEffect,useRef,useState } from 'react';
+type Props={value:string;onChange:(v:string)=>void;required?:boolean};
+export default function QrTokenInput({value,onChange,required}:Props){
+ const [scan,setScan]=useState(false),[msg,setMsg]=useState('');const videoRef=useRef<HTMLVideoElement>(null);
+ useEffect(()=>{if(!scan)return;let stream:MediaStream|undefined;let stop=false;(async()=>{try{const Detector=(window as any).BarcodeDetector;if(!Detector){setMsg('Leitura de QR por câmera não disponível; cole o código.');setScan(false);return;}stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'},audio:false});const video=videoRef.current!;video.srcObject=stream;await video.play();const detector=new Detector({formats:['qr_code']});while(!stop){const codes=await detector.detect(video);if(codes[0]?.rawValue){onChange(codes[0].rawValue);setMsg('QR lido ✓');setScan(false);break;}await new Promise(r=>setTimeout(r,250));}}catch(e){setMsg(e instanceof Error?e.message:'Falha ao ler QR');setScan(false);}})();return()=>{stop=true;stream?.getTracks().forEach(t=>t.stop());};},[scan]);
+ return <div className="qr-input"><label>QR/código dinâmico {required?'(obrigatório)':''}<input value={value} onChange={e=>onChange(e.target.value)} placeholder="Escaneie ou cole o código da unidade"/></label><button type="button" className="ghost" onClick={()=>setScan(true)}>Escanear QR</button>{scan&&<div className="mini-camera"><video ref={videoRef} playsInline muted/></div>}{msg&&<small>{msg}</small>}</div>;
+}

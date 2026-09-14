@@ -1,0 +1,8 @@
+import { FormEvent, useEffect, useState } from 'react';
+import { api } from '../../lib/api';
+export default function Departments(){
+ const [items,setItems]=useState<any[]>([]);const [name,setName]=useState('');const [code,setCode]=useState('');const [msg,setMsg]=useState('');const load=()=>api<any[]>('/admin/departments').then(setItems);useEffect(()=>{load().catch(()=>{});},[]);
+ async function submit(e:FormEvent){e.preventDefault();setMsg('');try{await api('/admin/departments',{method:'POST',body:JSON.stringify({name,code:code||undefined})});setName('');setCode('');setMsg('Setor criado.');await load();}catch(e){setMsg(e instanceof Error?e.message:'Erro');}}
+ async function toggle(i:any){await api(`/admin/departments/${i.id}`,{method:'PATCH',body:JSON.stringify({active:!i.active})});await load();}
+ return <div className="grid-two"><section className="card"><div className="eyebrow">ORGANIZAÇÃO</div><h2>Novo setor</h2><form className="stack" onSubmit={submit}><label>Nome<input required value={name} onChange={e=>setName(e.target.value)}/></label><label>Código<input value={code} onChange={e=>setCode(e.target.value)} placeholder="Ex.: OPS"/></label><button className="primary">Criar setor</button>{msg&&<div className="success-box">{msg}</div>}</form></section><section className="card"><div className="eyebrow">SETORES</div><h2>Estrutura ativa</h2>{items.map(i=><div className="request-item" key={i.id}><div><b>{i.name}</b><span>{i.code||'Sem código'}</span></div><div className="inline-actions"><span className={`status ${i.active?'approved':'rejected'}`}>{i.active?'ATIVO':'INATIVO'}</span><button className="ghost" onClick={()=>toggle(i)}>{i.active?'Desativar':'Ativar'}</button></div></div>)}</section></div>;
+}

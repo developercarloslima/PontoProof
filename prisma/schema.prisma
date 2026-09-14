@@ -1,0 +1,606 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  HR
+  SUPERVISOR
+  EMPLOYEE
+  AUDITOR
+}
+enum PunchType {
+  CLOCK_IN
+  BREAK_START
+  BREAK_END
+  PAUSE_START
+  PAUSE_END
+  CLOCK_OUT
+}
+enum AdjustmentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+enum AlertSeverity {
+  INFO
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+enum PayrollStatus {
+  DRAFT
+  REVIEW
+  CLOSED
+}
+enum FaceEnrollmentStatus {
+  NOT_ENROLLED
+  PENDING
+  ACTIVE
+  SUSPENDED
+}
+enum FacePose {
+  FRONT
+  LEFT
+  RIGHT
+}
+enum PunchDecision {
+  APPROVED
+  REVIEW
+  BLOCKED
+}
+enum LivenessAction {
+  BLINK
+  TURN_LEFT
+  TURN_RIGHT
+  HEAD_UP
+  HEAD_DOWN
+}
+enum WebAuthnChallengePurpose {
+  REGISTRATION
+  AUTHENTICATION
+  PUNCH
+}
+
+model Tenant {
+  id String @id @default(cuid())
+  name String
+  legalName String?
+  document String? @unique
+  timezone String @default("America/Maceio")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  users User[]
+  employees Employee[]
+  departments Department[]
+  worksites Worksite[]
+  shifts Shift[]
+  punches Punch[]
+  punchAttempts PunchAttempt[]
+  punchChallenges PunchChallenge[]
+  adjustments AdjustmentRequest[]
+  auditEvents AuditEvent[]
+  alerts Alert[]
+  rules TimeRuleSettings?
+  securitySettings AttendanceSecuritySettings?
+  balanceLedgers TimeBalanceLedger[]
+  bankAdjustments BankHourAdjustment[]
+  payrollPeriods PayrollPeriod[]
+  faceReferences FaceReference[]
+  webAuthnCredentials WebAuthnCredential[]
+  webAuthnChallenges WebAuthnChallenge[]
+  biometricAcknowledgements BiometricNoticeAcknowledgement[]
+}
+
+model User {
+  id String @id @default(cuid())
+  tenantId String
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  email String
+  passwordHash String
+  role Role
+  active Boolean @default(true)
+  mustChangePassword Boolean @default(true)
+  passwordChangedAt DateTime?
+  onboardingCompletedAt DateTime?
+  employee Employee?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  webAuthnCredentials WebAuthnCredential[]
+  webAuthnChallenges WebAuthnChallenge[]
+  biometricAcknowledgements BiometricNoticeAcknowledgement[]
+  @@unique([tenantId, email])
+  @@index([tenantId, role])
+}
+
+model Department {
+  id String @id @default(cuid())
+  tenantId String
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name String
+  code String?
+  active Boolean @default(true)
+  employees Employee[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([tenantId, name])
+  @@index([tenantId, active])
+}
+
+model Employee {
+  id String @id @default(cuid())
+  tenantId String
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId String? @unique
+  user User? @relation(fields: [userId], references: [id])
+  supervisorId String?
+  supervisor Employee? @relation("SupervisorTeam", fields: [supervisorId], references: [id])
+  team Employee[] @relation("SupervisorTeam")
+  departmentId String?
+  department Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  worksiteId String?
+  worksite Worksite? @relation(fields: [worksiteId], references: [id], onDelete: SetNull)
+  employeeNumber String
+  name String
+  cpfMasked String?
+  jobTitle String?
+  admissionDate DateTime?
+  salaryCents Int @default(0)
+  active Boolean @default(true)
+  shiftId String?
+  shift Shift? @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+  faceEnrollmentStatus FaceEnrollmentStatus @default(NOT_ENROLLED)
+  faceEnrolledAt DateTime?
+  faceTemplateVersion Int @default(0)
+  biometricRequired Boolean @default(true)
+  selfieRequiredOnPunch Boolean @default(true)
+  failedBiometricAttempts Int @default(0)
+  biometricLockedUntil DateTime?
+  punches Punch[]
+  punchAttempts PunchAttempt[]
+  punchChallenges PunchChallenge[]
+  devices Device[]
+  faceReferences FaceReference[]
+  biometricAcknowledgements BiometricNoticeAcknowledgement[]
+  adjustments AdjustmentRequest[]
+  alerts Alert[]
+  balanceLedgers TimeBalanceLedger[]
+  bankAdjustments BankHourAdjustment[]
+  payrollPreviews PayrollPreview[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([tenantId, employeeNumber])
+  @@index([tenantId, active])
+  @@index([tenantId, departmentId])
+  @@index([tenantId, faceEnrollmentStatus])
+}
+
+model Worksite {
+  id String @id @default(cuid())
+  tenantId String
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name String
+  latitude Float
+  longitude Float
+  radiusM Int @default(150)
+  active Boolean @default(true)
+  qrSecretHash String?
+  bluetoothNamePrefix String?
+  nfcTagId String?
+  networkGatewayId String?
+  employees Employee[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([tenantId, name])
+  @@index([tenantId, active])
+}
+
+model Shift {
+  id String @id @default(cuid())
+  tenantId String
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name String
+  timezone String @default("America/Maceio")
+  startTime String
+  endTime String
+  breakMinutes Int @default(60)
+  dailyMinutes Int @default(480)
+  weeklyMinutes Int @default(2400)
+  overtimeToleranceMin Int @default(10)
+  scheduleDays Json @default("[\"MON\",\"TUE\",\"WED\",\"THU\",\"FRI\"]")
+  active Boolean @default(true)
+  employees Employee[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([tenantId, name])
+  @@index([tenantId, active])
+}
+
+model TimeRuleSettings {
+  id String @id @default(cuid())
+  tenantId String @unique
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  bankHoursEnabled Boolean @default(true)
+  overtimeToBank Boolean @default(true)
+  deficitToBank Boolean @default(true)
+  overtime50Percent Int @default(50)
+  overtime100Percent Int @default(100)
+  sundayOvertime100 Boolean @default(true)
+  nightStart String @default("22:00")
+  nightEnd String @default("05:00")
+  nightAdditionalPercent Int @default(20)
+  minBreakMinutes Int @default(60)
+  maxDailyMinutes Int @default(600)
+  defaultToleranceMin Int @default(10)
+  monthlyHoursDivisor Int @default(220)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AttendanceSecuritySettings {
+  id String @id @default(cuid())
+  tenantId String @unique
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  requireSelfie Boolean @default(true)
+  requireFaceMatch Boolean @default(true)
+  requireLiveness Boolean @default(true)
+  requireAntiSpoof Boolean @default(true)
+  blockWithoutEnrollment Boolean @default(true)
+  blockOnFaceFailure Boolean @default(true)
+  requirePlatformBiometric Boolean @default(false)
+  requireTrustedDevice Boolean @default(false)
+  requireGeofence Boolean @default(false)
+  requireAccurateGps Boolean @default(true)
+  maxGpsAccuracyM Int @default(120)
+  requireDynamicQr Boolean @default(false)
+  requireNetworkAttestation Boolean @default(false)
+  requireBluetoothBeacon Boolean @default(false)
+  requireNfcTag Boolean @default(false)
+  allowOffline Boolean @default(true)
+  offlineRequiresReview Boolean @default(true)
+  minFaceMatchScore Float @default(0.78)
+  minLivenessScore Float @default(0.65)
+  minAntiSpoofScore Float @default(0.65)
+  minFaceQualityScore Float @default(0.55)
+  maxFaceCount Int @default(1)
+  faceReferenceMin Int @default(1)
+  faceReferenceRecommended Int @default(3)
+  selfieRetentionDays Int @default(90)
+  blockedAttemptRetentionDays Int @default(30)
+  revokedFaceReferenceRetentionDays Int @default(30)
+  challengeTtlSeconds Int @default(180)
+  maxFailedBiometricAttempts Int @default(5)
+  biometricLockoutMinutes Int @default(10)
+  maxOfflineAgeHours Int @default(72)
+  maxFutureClockSkewMinutes Int @default(5)
+  fullIntegrityRequiresAllConfigured Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Device {
+  id String @id @default(cuid())
+  employeeId String
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  fingerprint String
+  label String?
+  trusted Boolean @default(false)
+  lastSeenAt DateTime?
+  createdAt DateTime @default(now())
+  @@unique([employeeId, fingerprint])
+}
+
+model FaceReference {
+  id String @id @default(cuid())
+  tenantId String
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employeeId String
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  pose FacePose
+  storageKey String?
+  embeddingEncrypted String? @db.Text
+  embeddingModel String @default("human-hse-faceres")
+  faceQualityScore Float
+  livenessScore Float?
+  antiSpoofScore Float?
+  createdByUserId String?
+  createdAt DateTime @default(now())
+  revokedAt DateTime?
+  purgedAt DateTime?
+  @@index([tenantId, employeeId, revokedAt])
+}
+
+model PunchChallenge {
+  id String @id @default(cuid())
+  tenantId String
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employeeId String
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  type PunchType
+  nonce String @unique
+  livenessAction LivenessAction
+  expiresAt DateTime
+  usedAt DateTime?
+  createdAt DateTime @default(now())
+  @@index([tenantId, employeeId, expiresAt])
+}
+
+model Punch {
+  id String @id @default(cuid())
+  recordNumber BigInt @unique @default(autoincrement())
+  clientEventId String
+  tenantId String
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employeeId String
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  type PunchType
+  occurredAt DateTime
+  receivedAt DateTime @default(now())
+  timezone String
+  source String @default("WEB_PWA")
+  offline Boolean @default(false)
+  previousHash String?
+  integrityHash String @unique
+  decision PunchDecision @default(APPROVED)
+  reviewReason String?
+  evidence PunchEvidence?
+  auditEvents AuditEvent[]
+  createdAt DateTime @default(now())
+  @@unique([tenantId, clientEventId])
+  @@index([tenantId, employeeId, occurredAt])
+  @@index([tenantId, decision, occurredAt])
+}
+
+model PunchEvidence {
+  id String @id @default(cuid())
+  punchId String @unique
+  punch Punch @relation(fields: [punchId], references: [id], onDelete: Cascade)
+  challengeId String?
+  latitude Float?
+  longitude Float?
+  accuracyM Float?
+  worksiteId String?
+  geofenceOk Boolean?
+  deviceFingerprint String?
+  deviceTrusted Boolean @default(false)
+  selfieStorageKey String?
+  selfieCapturedAt DateTime?
+  clientCapturedAt DateTime?
+  selfiePurgedAt DateTime?
+  faceDetected Boolean @default(false)
+  faceCount Int @default(0)
+  faceQualityScore Float?
+  faceMatchScore Float?
+  faceVerified Boolean @default(false)
+  livenessScore Float?
+  livenessOk Boolean?
+  antiSpoofScore Float?
+  antiSpoofOk Boolean?
+  livenessAction String?
+  livenessChallengePassed Boolean @default(false)
+  platformBiometricVerified Boolean @default(false)
+  webAuthnCredentialId String?
+  mockLocationRisk Boolean @default(false)
+  gpsAccuracyOk Boolean?
+  appIntegrityStatus String @default("WEB_UNATTESTED")
+  locationTelemetryJson Json?
+  riskSignalsJson Json?
+  networkAttested Boolean?
+  bluetoothAttested Boolean?
+  nfcAttested Boolean?
+  dynamicQrAttested Boolean?
+  offlinePayloadHash String?
+  proofScore Int
+  proofLevel String
+  reasonsJson Json
+  missingRequirementsJson Json?
+  createdAt DateTime @default(now())
+}
+
+model PunchAttempt {
+  id String @id @default(cuid())
+  tenantId String
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employeeId String
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  clientEventId String
+  type PunchType
+  attemptedAt DateTime @default(now())
+  decision PunchDecision
+  reason String
+  selfieStorageKey String?
+  faceMatchScore Float?
+  livenessScore Float?
+  antiSpoofScore Float?
+  deviceFingerprint String?
+  latitude Float?
+  longitude Float?
+  metadataJson Json?
+  @@unique([tenantId, clientEventId])
+  @@index([tenantId, employeeId, attemptedAt])
+  @@index([tenantId, decision, attemptedAt])
+}
+
+model WebAuthnCredential {
+  id String @id @default(cuid())
+  tenantId String
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  credentialId String @unique
+  publicKey Bytes
+  counter BigInt @default(0)
+  transports Json?
+  deviceType String?
+  backedUp Boolean @default(false)
+  label String?
+  createdAt DateTime @default(now())
+  lastUsedAt DateTime?
+  @@index([tenantId, userId])
+}
+
+model WebAuthnChallenge {
+  id String @id @default(cuid())
+  tenantId String
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  challenge String
+  purpose WebAuthnChallengePurpose
+  boundPunchChallengeId String?
+  expiresAt DateTime
+  usedAt DateTime?
+  createdAt DateTime @default(now())
+  @@index([tenantId, userId, purpose, expiresAt])
+}
+
+
+model BiometricNoticeAcknowledgement {
+  id String @id @default(cuid())
+  tenantId String
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  employeeId String?
+  employee Employee? @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  policyVersion String
+  noticeHash String
+  acknowledgedAt DateTime @default(now())
+  revokedAt DateTime?
+  ipAddressHash String?
+  userAgentHash String?
+  @@index([tenantId, userId, acknowledgedAt])
+  @@index([tenantId, employeeId, acknowledgedAt])
+}
+
+model AdjustmentRequest {
+  id String @id @default(cuid())
+  tenantId String
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employeeId String
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  targetPunchId String?
+  requestedAt DateTime @default(now())
+  requestedTime DateTime
+  requestedType PunchType
+  reason String
+  status AdjustmentStatus @default(PENDING)
+  reviewedById String?
+  reviewedAt DateTime?
+  reviewNote String?
+  resultingPunchId String?
+  @@index([tenantId, status, requestedAt])
+}
+
+model TimeBalanceLedger {
+  id String @id @default(cuid())
+  tenantId String
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employeeId String
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  workDate DateTime
+  scheduledMinutes Int @default(0)
+  workedMinutes Int @default(0)
+  regularMinutes Int @default(0)
+  overtime50Minutes Int @default(0)
+  overtime100Minutes Int @default(0)
+  nightMinutes Int @default(0)
+  missingMinutes Int @default(0)
+  bankDeltaMinutes Int @default(0)
+  source String @default("ENGINE")
+  detailsJson Json?
+  calculatedAt DateTime @default(now())
+  @@unique([tenantId, employeeId, workDate])
+  @@index([tenantId, workDate])
+}
+
+model BankHourAdjustment {
+  id String @id @default(cuid())
+  tenantId String
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employeeId String
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  minutes Int
+  reason String
+  effectiveAt DateTime
+  actorUserId String?
+  createdAt DateTime @default(now())
+  @@index([tenantId, employeeId, effectiveAt])
+}
+
+model PayrollPeriod {
+  id String @id @default(cuid())
+  tenantId String
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  label String
+  startDate DateTime
+  endDate DateTime
+  status PayrollStatus @default(DRAFT)
+  previews PayrollPreview[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([tenantId, label])
+  @@index([tenantId, startDate, endDate])
+}
+
+model PayrollPreview {
+  id String @id @default(cuid())
+  payrollPeriodId String
+  payrollPeriod PayrollPeriod @relation(fields: [payrollPeriodId], references: [id], onDelete: Cascade)
+  employeeId String
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  workedMinutes Int @default(0)
+  regularMinutes Int @default(0)
+  overtime50Minutes Int @default(0)
+  overtime100Minutes Int @default(0)
+  nightMinutes Int @default(0)
+  missingMinutes Int @default(0)
+  bankDeltaMinutes Int @default(0)
+  overtime50Cents Int @default(0)
+  overtime100Cents Int @default(0)
+  nightAdditionalCents Int @default(0)
+  estimatedGrossCents Int @default(0)
+  warningsJson Json?
+  generatedAt DateTime @default(now())
+  @@unique([payrollPeriodId, employeeId])
+  @@index([employeeId, generatedAt])
+}
+
+model AuditEvent {
+  id String @id @default(cuid())
+  tenantId String
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  punchId String?
+  punch Punch? @relation(fields: [punchId], references: [id], onDelete: SetNull)
+  actorUserId String?
+  action String
+  entityType String
+  entityId String
+  beforeJson Json?
+  afterJson Json?
+  metadataJson Json?
+  createdAt DateTime @default(now())
+  @@index([tenantId, entityType, entityId, createdAt])
+}
+
+model Alert {
+  id String @id @default(cuid())
+  tenantId String
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employeeId String?
+  employee Employee? @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  severity AlertSeverity
+  code String
+  title String
+  description String
+  resolved Boolean @default(false)
+  createdAt DateTime @default(now())
+  resolvedAt DateTime?
+  @@index([tenantId, resolved, severity, createdAt])
+}

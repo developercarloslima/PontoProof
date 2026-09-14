@@ -1,0 +1,9 @@
+import { useEffect, useState } from 'react';
+import { api } from '../lib/api';
+
+export default function Audit(){
+ const [events,setEvents]=useState<any[]>([]);const [employees,setEmployees]=useState<any[]>([]);const [employeeId,setEmployeeId]=useState('');const [result,setResult]=useState<any>(null);const [error,setError]=useState('');
+ useEffect(()=>{Promise.all([api<any[]>('/audit/events'),api<any[]>('/audit/employees')]).then(([a,e])=>{setEvents(a);setEmployees(e);if(e[0])setEmployeeId(e[0].id)}).catch(e=>setError(e instanceof Error?e.message:'Erro'));},[]);
+ async function verify(){setError('');setResult(null);try{setResult(await api(`/integrity/verify/${employeeId}`));}catch(e){setError(e instanceof Error?e.message:'Erro');}}
+ return <div className="grid-two"><section className="card"><div className="eyebrow">INTEGRIDADE</div><h2>Verificar ledger</h2><div className="stack"><label>Colaborador<select value={employeeId} onChange={e=>setEmployeeId(e.target.value)}>{employees.map(x=><option key={x.id} value={x.id}>{x.name} · {x.employeeNumber}</option>)}</select></label><button className="primary" onClick={verify} disabled={!employeeId}>Recalcular cadeia de hashes</button>{error&&<div className="error-box">{error}</div>}{result&&<div className={result.valid?'success-box':'error-box'}><b>{result.valid?'Cadeia íntegra':'Falha de integridade'}</b><div>{result.records} registro(s) verificados · {result.failures?.length??0} falha(s)</div>{result.lastHash&&<code className="audit-hash">{result.lastHash}</code>}</div>}</div></section><section className="card"><div className="eyebrow">TRILHA DE AUDITORIA</div><h2>Eventos recentes</h2><div className="audit-list">{events.map(e=><div className="audit-event" key={e.id}><div><b>{e.action}</b><span>{e.entityType} · {e.entityId}</span></div><small>{new Date(e.createdAt).toLocaleString('pt-BR')}</small></div>)}</div></section></div>;
+}

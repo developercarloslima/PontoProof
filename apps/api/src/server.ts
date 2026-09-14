@@ -1,0 +1,79 @@
+import 'dotenv/config';
+import Fastify from 'fastify';
+import cors from '@fastify/cors';
+import helmet from '@fastify/helmet';
+import jwt from '@fastify/jwt';
+import rateLimit from '@fastify/rate-limit';
+import { authRoutes } from './routes/auth.js';
+import { meRoutes } from './routes/me.js';
+import { punchRoutes } from './routes/punches.js';
+import { adjustmentRoutes } from './routes/adjustments.js';
+import { dashboardRoutes } from './routes/dashboard.js';
+import { deviceRoutes } from './routes/devices.js';
+import { assistantRoutes } from './routes/assistant.js';
+import { adminRoutes } from './routes/admin.js';
+import { timeRoutes } from './routes/time.js';
+import { payrollRoutes } from './routes/payroll.js';
+import { auditRoutes } from './routes/audit.js';
+import { securityRoutes } from './routes/security.js';
+import { runBiometricRetention } from './services/retention.service.js';
+import { getOnboardingState } from './services/onboarding.service.js';
+
+const app = Fastify({ logger: true, bodyLimit: 8 * 1024 * 1024 });
+const jwtSecret = process.env.JWT_SECRET ?? 'dev-secret-change-me';
+if (process.env.NODE_ENV === 'production') {
+  if(jwtSecret.length < 32) throw new Error('JWT_SECRET deve ter pelo menos 32 caracteres em produção');
+  for(const key of ['BIOMETRIC_ENCRYPTION_KEY','AUDIT_PRIVACY_HASH_KEY','PRESENCE_SIGNING_SECRET','WEBAUTHN_RP_ID','WEBAUTHN_ORIGIN'] as const){if(!process.env[key])throw new Error(`${key} é obrigatória em produção`);}
+  if(!String(process.env.WEBAUTHN_ORIGIN).startsWith('https://'))throw new Error('WEBAUTHN_ORIGIN deve usar HTTPS em produção');
+}
+await app.register(cors, { origin: process.env.WEB_ORIGIN?.split(',') ?? true, credentials: true });
+await app.register(helmet);
+await app.register(rateLimit, { max: 180, timeWindow: '1 minute' });
+await app.register(jwt, { secret: jwtSecret });
+
+app.decorate('authenticate', async function(request: any, reply: any) {
+  try { await request.jwtVerify(); }
+  catch { return reply.code(401).send({ error: 'Não autenticado' }); }
+  const path = String(request.routeOptions?.url ?? request.url ?? '').split('?')[0];
+  const onboardingAllowed = [
+    '/auth/onboarding-status', '/auth/change-password', '/security/status',
+    '/security/biometric-notice', '/security/biometric-notice/acknowledge',
+    '/security/face-enrollment/challenge', '/security/face-enrollment',
+    '/security/webauthn/register/options', '/security/webauthn/register/verify'
+  ];
+  if (!onboardingAllowed.includes(path)) {
+    const onboarding = await getOnboardingState(request.user.userId);
+    if (!onboarding.completed) return reply.code(428).send({ error: 'Primeiro acesso incompleto. Troque a senha e conclua o cadastro facial e biométrico.', code: 'ONBOARDING_REQUIRED', onboarding });
+  }
+});
+
+declare module 'fastify' { interface FastifyInstance { authenticate: any } }
+
+app.get('/health', async () => ({ ok: true, service: 'pontoproof-api', version: '0.3.4', at: new Date().toISOString() }));
+await app.register(authRoutes);
+await app.register(meRoutes);
+await app.register(punchRoutes);
+await app.register(adjustmentRoutes);
+await app.register(dashboardRoutes);
+await app.register(deviceRoutes);
+await app.register(assistantRoutes);
+await app.register(adminRoutes);
+await app.register(timeRoutes);
+await app.register(payrollRoutes);
+await app.register(auditRoutes);
+await app.register(securityRoutes);
+
+app.setErrorHandler((error, _request, reply) => {
+  app.log.error(error);
+  const status = (error as any).statusCode ?? ((error as any).name === 'ZodError' ? 400 : 500);
+  const message = status === 500 ? 'Erro interno' : (error instanceof Error ? error.message : 'Erro de requisição');
+  reply.code(status >= 400 && status < 600 ? status : 500).send({ error: message });
+});
+
+const port = Number(process.env.API_PORT ?? 3333);
+await app.listen({ port, host: '0.0.0.0' });
+
+// Privacy-by-design: remove punch selfies and blocked attempts after the tenant retention window.
+const retentionTimer=setInterval(()=>runBiometricRetention().then(r=>app.log.info({retention:r},'biometric retention completed')).catch(err=>app.log.error(err,'biometric retention failed')),6*60*60*1000);
+retentionTimer.unref();
+setTimeout(()=>runBiometricRetention().catch(err=>app.log.error(err,'initial biometric retention failed')),15_000).unref();

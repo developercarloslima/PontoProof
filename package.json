@@ -1,0 +1,38 @@
+{
+  "name": "pontoproof",
+  "private": true,
+  "version": "0.3.5",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c auto \"npm run dev -w @pontoproof/api\" \"npm run dev -w @pontoproof/web\"",
+    "build": "npm run build -w @pontoproof/api && npm run build -w @pontoproof/web",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:seed": "tsx prisma/seed.ts",
+    "postinstall": "node scripts/copy-human-models.mjs",
+    "gateway:dev": "npm run dev -w @pontoproof/presence-gateway",
+    "db:validate": "prisma validate"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "prisma": "^6.16.1",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.16.1",
+    "bcryptjs": "^3.0.2"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "allowScripts": {
+    "@prisma/client": true,
+    "@prisma/engines": true,
+    "esbuild": true,
+    "prisma": true
+  }
+}
