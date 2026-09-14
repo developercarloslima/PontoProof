@@ -1,3 +1,13 @@
+# PontoProof v0.3.9
+
+- Câmera biométrica abre imediatamente, sem aguardar modelos de IA.
+- Modelos começam a carregar já na tela de login.
+- `modelBasePath` corrigido para `/models/human/`, usando os modelos locais do próprio app.
+- Cache de modelos em IndexedDB habilitado explicitamente.
+- Validação de modelos desativada no cliente para reduzir o startup, sem desativar liveness/antispoof.
+- Análise facial passa a usar frame interno 320x240; captura final continua em resolução maior.
+- Primeiro carregamento fica oculto atrás do login/onboarding; usos seguintes aproveitam cache.
+
 # v0.3.8
 
 - Otimiza o início do reconhecimento facial no navegador.

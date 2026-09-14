@@ -22,15 +22,17 @@ export function onBiometricEngineStatus(listener:StatusListener){listeners.add(l
 function createHuman(){
   return new Human({
     backend:'webgl',
-    cacheSensitivity:0.65,
+    // IMPORTANT: models are shipped with the app. Never depend on a remote model host.
+    modelBasePath:'/models/human/',
+    cacheModels:true,
+    validateModels:false,
+    async:true,
+    cacheSensitivity:0.68,
     filter:{enabled:false,equalization:false,flip:false},
     face:{
       enabled:true,
-      // Keep up to two faces so the client can reject scenes containing another person.
       detector:{rotation:true,maxDetected:2,minConfidence:0.45,skipFrames:4,skipTime:180},
       mesh:{enabled:true,skipFrames:1,skipTime:80},
-      // Our challenges use face-mesh gestures (blink, facing and head up/down), not gaze.
-      // Disabling iris removes an unnecessary model and materially reduces startup/inference cost.
       iris:{enabled:false},
       description:{enabled:true,skipFrames:3,skipTime:220},
       antispoof:{enabled:true,skipFrames:2,skipTime:180},
@@ -41,6 +43,7 @@ function createHuman(){
   } as any);
 }
 
+/** Loads the enabled model files and prepares WebGL. Camera/UI must never wait before opening. */
 export function getHuman(){
   if(!humanPromise){
     humanPromise=(async()=>{
@@ -49,21 +52,20 @@ export function getHuman(){
         const human:any=createHuman();
         await human.load();
         publish('warming');
+        // Warmup happens during login/onboarding in the background. If a user opens the
+        // camera unusually fast, only the AI validation waits; the live preview is already open.
         await human.warmup();
         publish('ready');
         return human;
       }catch(error){
-        // Allow a real retry instead of keeping a rejected Promise forever.
-        humanPromise=null;
-        publish('error');
-        throw error;
+        humanPromise=null;publish('error');throw error;
       }
     })();
   }
   return humanPromise;
 }
 
-/** Starts model download/WebGL compilation before the camera is needed. */
+/** Starts model download/cache as early as possible without blocking navigation. */
 export function preloadHuman(){return getHuman();}
 
 export function challengeText(action:string){

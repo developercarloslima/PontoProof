@@ -1,3 +1,7 @@
+# PontoProof v0.3.9
+
+Esta versão prioriza abertura instantânea da câmera: o preview não espera o motor facial. Os modelos são servidos localmente em `/models/human/`, pré-carregados desde o login e mantidos em cache. Face match, liveness e antispoof continuam obrigatórios.
+
 # PontoProof v0.3.8 — Primeiro acesso biométrico otimizado
 
 **Sistema operacional de jornada com prova digital de identidade, presença e integridade.**

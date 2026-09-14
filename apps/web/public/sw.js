@@ -1,5 +1,5 @@
-const CACHE = 'pontoproof-v4';
-const MODEL_CACHE = 'pontoproof-biometric-models-v1';
+const CACHE = 'pontoproof-v5';
+const MODEL_CACHE = 'pontoproof-biometric-models-v2';
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest'];
 
 self.addEventListener('install', event => {

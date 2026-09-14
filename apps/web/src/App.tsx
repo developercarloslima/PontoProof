@@ -12,10 +12,8 @@ import { preloadHuman } from './lib/biometrics';
 
 export default function App(){
  const [user,setUser]=useState<SessionUser|null>(getToken()?getCachedUser():null); const [tab,setTab]=useState('ponto'); const [onboardingChecked,setOnboardingChecked]=useState(false);
- useEffect(()=>{if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(()=>{});},[]);
+ useEffect(()=>{if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(()=>{});preloadHuman().catch(()=>{});},[]);
  useEffect(()=>{if(user?.role==='AUDITOR')setTab('auditoria');},[user?.role]);
- // Prepare the AI models while the user is navigating/login onboarding instead of waiting after the camera opens.
- useEffect(()=>{if(user)preloadHuman().catch(()=>{});},[user?.id]);
  useEffect(()=>{if(!user){setOnboardingChecked(true);return;}setOnboardingChecked(false);api<any>('/auth/onboarding-status').then(onboarding=>{const next={...user,onboarding};cacheUser(next);setUser(next);setOnboardingChecked(true);}).catch(()=>setOnboardingChecked(true));},[user?.id]);
  if(!user)return <Login onLogin={u=>{setUser(u);setOnboardingChecked(true);}}/>;
  if(!onboardingChecked)return <main className="login-shell"><section className="login-card"><h2>Validando primeiro acesso…</h2></section></main>;
