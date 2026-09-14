@@ -20,9 +20,28 @@ import { enrollFaceReference } from '../services/face-enrollment.service.js';
 import { refreshOnboardingCompletion } from '../services/onboarding.service.js';
 import { createAsyncFaceEnrollment, publicSubmission, retryFaceEnrollmentSubmission } from '../services/face-enrollment-async.service.js';
 
-const rpID = process.env.WEBAUTHN_RP_ID ?? 'localhost';
-const rpName = process.env.WEBAUTHN_RP_NAME ?? 'PontoProof';
-const expectedOrigin = process.env.WEBAUTHN_ORIGIN ?? 'http://localhost:5173';
+function getWebAuthnConfig(){
+  const renderHostname=process.env.RENDER_EXTERNAL_HOSTNAME?.trim();
+  const production=process.env.NODE_ENV==='production';
+  const configuredRp=(process.env.WEBAUTHN_RP_ID??'').trim();
+  const configuredOrigin=(process.env.WEBAUTHN_ORIGIN??'').trim();
+
+  // In production on Render, never keep localhost as RP/origin.
+  // Route modules are evaluated before server.ts finishes inferring env vars,
+  // so the values must be resolved at request time rather than module load time.
+  const useRenderRp=Boolean(renderHostname) && (
+    !configuredRp || (production && ['localhost','127.0.0.1'].includes(configuredRp.toLowerCase()))
+  );
+  const useRenderOrigin=Boolean(renderHostname) && (
+    !configuredOrigin || (production && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(configuredOrigin))
+  );
+
+  const rpID=(useRenderRp ? renderHostname! : (configuredRp || 'localhost'))
+    .replace(/^https?:\/\//i,'').split('/')[0].split(':')[0];
+  const origin=useRenderOrigin ? `https://${renderHostname}` : (configuredOrigin || 'http://localhost:5173');
+  const rpName=process.env.WEBAUTHN_RP_NAME?.trim() || 'PontoProof';
+  return {rpID,rpName,expectedOrigin:origin};
+}
 const challengeTtlMs = 5 * 60_000;
 
 function transports(value: unknown): AuthenticatorTransport[] | undefined {
@@ -44,6 +63,7 @@ export async function securityRoutes(app: FastifyInstance) {
       getCurrentAcknowledgement(request.user.tenantId, request.user.userId),
       request.user.employeeId ? prisma.faceEnrollmentSubmission.findFirst({where:{tenantId:request.user.tenantId,employeeId:request.user.employeeId},orderBy:{submittedAt:'desc'}}) : null
     ]);
+    const {rpID,expectedOrigin}=getWebAuthnConfig();
     return { policy, credentials, employee, acknowledgement, faceEnrollmentSubmission:submission?publicSubmission(submission):null, biometricNotice:{version:BIOMETRIC_NOTICE_VERSION,hash:BIOMETRIC_NOTICE_HASH,text:BIOMETRIC_NOTICE_TEXT}, webAuthn:{rpID,origin:expectedOrigin,secureContextRequired:true} }; 
   });
 
@@ -125,6 +145,7 @@ export async function securityRoutes(app: FastifyInstance) {
       if(!pending)return reply.code(409).send({error:'Envie as fotos do cadastro facial antes de cadastrar a biometria do dispositivo'});
     }
     const existing = await prisma.webAuthnCredential.findMany({ where:{userId:user.id} });
+    const {rpID,rpName}=getWebAuthnConfig();
     const options = await generateRegistrationOptions({
       rpName, rpID, userName:user.email, userDisplayName:user.email,
       userID:new TextEncoder().encode(user.id), attestationType:'none',
@@ -140,6 +161,7 @@ export async function securityRoutes(app: FastifyInstance) {
     const body = z.object({ response:z.any(), label:z.string().max(80).optional() }).parse(request.body) as {response:RegistrationResponseJSON;label?:string};
     const challenge = await prisma.webAuthnChallenge.findFirst({ where:{tenantId:request.user.tenantId,userId:request.user.userId,purpose:'REGISTRATION',usedAt:null,expiresAt:{gt:new Date()}}, orderBy:{createdAt:'desc'} });
     if (!challenge) return reply.code(400).send({error:'Desafio WebAuthn expirado'});
+    const {rpID,expectedOrigin}=getWebAuthnConfig();
     const verification = await verifyRegistrationResponse({ response:body.response, expectedChallenge:challenge.challenge, expectedOrigin, expectedRPID:rpID, requireUserVerification:true, supportedAlgorithmIDs:[-7,-257] });
     if (!verification.verified || !verification.registrationInfo) return reply.code(400).send({error:'Biometria/passkey não pôde ser validada'});
     const info = verification.registrationInfo;
@@ -159,6 +181,7 @@ export async function securityRoutes(app: FastifyInstance) {
     if(!punchChallenge)return reply.code(400).send({error:'Challenge da marcação inválido ou expirado'});
     const creds = await prisma.webAuthnCredential.findMany({ where:{tenantId:request.user.tenantId,userId:request.user.userId} });
     if (!creds.length) return reply.code(409).send({error:'Nenhuma biometria/passkey cadastrada neste usuário'});
+    const {rpID}=getWebAuthnConfig();
     const options = await generateAuthenticationOptions({ rpID, userVerification:'required', allowCredentials:creds.map(x=>({id:x.credentialId,transports:transports(x.transports)})) });
     await prisma.webAuthnChallenge.create({ data:{tenantId:request.user.tenantId,userId:request.user.userId,challenge:options.challenge,purpose:WebAuthnChallengePurpose.PUNCH,boundPunchChallengeId:punchChallengeId,expiresAt:new Date(Date.now()+challengeTtlMs)} });
     return options;
@@ -170,6 +193,7 @@ export async function securityRoutes(app: FastifyInstance) {
     if (!challenge) return reply.code(400).send({error:'Desafio biométrico expirado'});
     const saved = await prisma.webAuthnCredential.findFirst({where:{tenantId:request.user.tenantId,userId:request.user.userId,credentialId:response.id}});
     if (!saved) return reply.code(404).send({error:'Credencial biométrica não reconhecida'});
+    const {rpID,expectedOrigin}=getWebAuthnConfig();
     const verification = await verifyAuthenticationResponse({ response, expectedChallenge:challenge.challenge, expectedOrigin, expectedRPID:rpID, requireUserVerification:true, credential:{id:saved.credentialId,publicKey:new Uint8Array(saved.publicKey),counter:Number(saved.counter),transports:transports(saved.transports)} });
     if (!verification.verified) return reply.code(400).send({error:'Biometria do dispositivo não validada'});
     await prisma.$transaction([

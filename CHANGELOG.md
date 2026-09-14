@@ -1,3 +1,10 @@
+# PontoProof v0.4.3
+
+- Corrige WebAuthn no Render: RP ID e Origin são resolvidos em tempo de requisição.
+- Impede `localhost` de ser usado como RP ID em produção quando `RENDER_EXTERNAL_HOSTNAME` estiver disponível.
+- Mantém funcionamento local em `localhost`.
+- Corrige cadastro de Windows Hello, impressão digital, Touch ID, Face ID e passkeys no domínio `*.onrender.com`.
+
 # PontoProof v0.4.2
 
 - Corrigido worker facial no Render/Node 22: não usa mais o subpath bloqueado `@vladmandic/human/dist/human.node-wasm.js`.
