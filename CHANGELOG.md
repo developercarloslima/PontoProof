@@ -1,3 +1,10 @@
+# PontoProof v0.4.2
+
+- Corrigido worker facial no Render/Node 22: não usa mais o subpath bloqueado `@vladmandic/human/dist/human.node-wasm.js`.
+- O backend resolve a entrada pública de `@vladmandic/human`, localiza o bundle `human.node-wasm.js` pelo caminho absoluto instalado e o carrega diretamente.
+- Mantido processamento facial assíncrono, WASM, três fotos, liveness, antispoof e embeddings.
+- Adicionada validação explícita da existência do bundle WASM e dos modelos faciais para mensagens de erro mais claras.
+
 # PontoProof v0.4.1
 
 ## Correção Render / worker facial

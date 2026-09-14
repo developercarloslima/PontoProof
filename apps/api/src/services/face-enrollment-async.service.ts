@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
@@ -26,13 +27,23 @@ function cosine(a:number[],b:number[]){
   return aa&&bb?clamp(dot/(Math.sqrt(aa)*Math.sqrt(bb))):0;
 }
 
+function humanPackagePaths(){
+  // Resolve only the package's public/default entry. This is always allowed by
+  // Node package exports. From that absolute filesystem path we can safely
+  // address the WASM Node bundle without asking Node to resolve a blocked
+  // package subpath such as "@vladmandic/human/dist/human.node-wasm.js".
+  const defaultEntry=require.resolve('@vladmandic/human');
+  const distDir=path.dirname(defaultEntry);
+  const wasmEntry=path.join(distDir,'human.node-wasm.js');
+  const modelsDir=path.resolve(distDir,'../models');
+  if(!fs.existsSync(wasmEntry))throw new Error(`Motor facial Human/WASM não encontrado em ${wasmEntry}`);
+  if(!fs.existsSync(modelsDir))throw new Error(`Modelos faciais Human não encontrados em ${modelsDir}`);
+  return {defaultEntry,distDir,wasmEntry,modelsDir};
+}
+
 function humanModelsUrl(){
-  try {
-    const entry=require.resolve('@vladmandic/human/dist/human.node-wasm.js');
-    return pathToFileURL(path.resolve(path.dirname(entry),'../models')).href.replace(/\/$/,'')+'/';
-  } catch {
-    return pathToFileURL(path.resolve(process.cwd(),'node_modules/@vladmandic/human/models')).href.replace(/\/$/,'')+'/';
-  }
+  const {modelsDir}=humanPackagePaths();
+  return pathToFileURL(modelsDir).href.replace(/\/$/,'')+'/';
 }
 
 function wasmFilesPath(){
@@ -46,11 +57,13 @@ function wasmFilesPath(){
 
 function getHumanConstructor():HumanConstructor{
   if(humanCtor)return humanCtor;
-  // IMPORTANT: use the explicit Node WASM bundle. The default Node entry requires
-  // @tensorflow/tfjs-node native binaries and can crash the whole API on Render.
-  // The WASM bundle is architecture-independent and is loaded lazily only when a
-  // face-enrollment job actually needs processing.
-  const mod:any=require('@vladmandic/human/dist/human.node-wasm.js');
+  // IMPORTANT: do not import a package subpath here. Some published Human builds
+  // do not expose ./dist/human.node-wasm.js through package.json "exports",
+  // which causes ERR_PACKAGE_PATH_NOT_EXPORTED on Node 22/Render. Requiring the
+  // already-resolved absolute file bypasses that export-map limitation while
+  // still loading the package's own WASM Node bundle.
+  const {wasmEntry}=humanPackagePaths();
+  const mod:any=require(wasmEntry);
   const ctor=mod?.default??mod?.Human;
   if(typeof ctor!=='function')throw new Error('Motor facial Human/WASM não pôde ser inicializado');
   humanCtor=ctor as HumanConstructor;
