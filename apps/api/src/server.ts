@@ -4,6 +4,9 @@ import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import jwt from '@fastify/jwt';
 import rateLimit from '@fastify/rate-limit';
+import fastifyStatic from '@fastify/static';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { authRoutes } from './routes/auth.js';
 import { meRoutes } from './routes/me.js';
 import { punchRoutes } from './routes/punches.js';
@@ -20,6 +23,15 @@ import { runBiometricRetention } from './services/retention.service.js';
 import { getOnboardingState } from './services/onboarding.service.js';
 
 const app = Fastify({ logger: true, bodyLimit: 8 * 1024 * 1024 });
+
+// Render exposes the public hostname automatically. In a single-service deployment
+// we can derive the WebAuthn RP and browser origin from it without hardcoding a URL.
+const renderHostname = process.env.RENDER_EXTERNAL_HOSTNAME?.trim();
+const inferredOrigin = renderHostname ? `https://${renderHostname}` : undefined;
+if (!process.env.WEB_ORIGIN && inferredOrigin) process.env.WEB_ORIGIN = inferredOrigin;
+if (!process.env.WEBAUTHN_RP_ID && renderHostname) process.env.WEBAUTHN_RP_ID = renderHostname;
+if (!process.env.WEBAUTHN_ORIGIN && inferredOrigin) process.env.WEBAUTHN_ORIGIN = inferredOrigin;
+
 const jwtSecret = process.env.JWT_SECRET ?? 'dev-secret-change-me';
 if (process.env.NODE_ENV === 'production') {
   if(jwtSecret.length < 32) throw new Error('JWT_SECRET deve ter pelo menos 32 caracteres em produção');
@@ -49,7 +61,7 @@ app.decorate('authenticate', async function(request: any, reply: any) {
 
 declare module 'fastify' { interface FastifyInstance { authenticate: any } }
 
-app.get('/health', async () => ({ ok: true, service: 'pontoproof-api', version: '0.3.4', at: new Date().toISOString() }));
+app.get('/health', async () => ({ ok: true, service: 'pontoproof', version: '0.3.6', at: new Date().toISOString() }));
 await app.register(authRoutes);
 await app.register(meRoutes);
 await app.register(punchRoutes);
@@ -63,6 +75,14 @@ await app.register(payrollRoutes);
 await app.register(auditRoutes);
 await app.register(securityRoutes);
 
+// Render deployment: serve the Vite build from the same Fastify process.
+// This keeps WebAuthn, cookies/CORS and the API under one HTTPS origin.
+if (process.env.SERVE_WEB === 'true') {
+  const currentDir = path.dirname(fileURLToPath(import.meta.url));
+  const webDist = path.resolve(currentDir, '../../web/dist');
+  await app.register(fastifyStatic, { root: webDist, prefix: '/' });
+}
+
 app.setErrorHandler((error, _request, reply) => {
   app.log.error(error);
   const status = (error as any).statusCode ?? ((error as any).name === 'ZodError' ? 400 : 500);
@@ -70,7 +90,7 @@ app.setErrorHandler((error, _request, reply) => {
   reply.code(status >= 400 && status < 600 ? status : 500).send({ error: message });
 });
 
-const port = Number(process.env.API_PORT ?? 3333);
+const port = Number(process.env.PORT ?? process.env.API_PORT ?? 3333);
 await app.listen({ port, host: '0.0.0.0' });
 
 // Privacy-by-design: remove punch selfies and blocked attempts after the tenant retention window.

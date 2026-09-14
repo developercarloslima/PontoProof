@@ -1,3 +1,13 @@
+# PontoProof v0.3.6
+
+- Deploy de teste preparado para Render via Blueprint (`render.yaml`).
+- Frontend e API agora podem rodar no mesmo domínio HTTPS usando `Dockerfile.render`.
+- WebAuthn/WEB_ORIGIN podem ser derivados automaticamente de `RENDER_EXTERNAL_HOSTNAME`.
+- API respeita `PORT` do provedor de hospedagem.
+- Health check atualizado para v0.3.6.
+- Blueprint cria serviço web e PostgreSQL gratuitos para teste.
+- Evidências em filesystem continuam efêmeras no plano gratuito; produção requer persistent disk/object storage.
+
 # v0.3.5
 
 - Seed local agora cria 2 contas ADM, 2 contas RH e 2 contas de colaborador.
