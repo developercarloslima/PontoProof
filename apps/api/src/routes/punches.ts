@@ -56,23 +56,27 @@ export async function punchRoutes(app:FastifyInstance){
   app.post('/punches/challenge',{preHandler:[app.authenticate]},async(request:any,reply)=>{
     if(!request.user.employeeId)return reply.code(403).send({error:'Usuário sem vínculo de colaborador'});
     const {type}=z.object({type:z.nativeEnum(PunchType)}).parse(request.body);
-    const [employee,policy,credentialCount,acknowledgement]=await Promise.all([
+    const [employee,policy,credentialCount,acknowledgement,latestSubmission]=await Promise.all([
       prisma.employee.findFirst({where:{id:request.user.employeeId,tenantId:request.user.tenantId,active:true},select:{id:true,faceEnrollmentStatus:true,faceEnrolledAt:true,biometricLockedUntil:true,failedBiometricAttempts:true}}),
       getOrCreateSecuritySettings(request.user.tenantId),
       prisma.webAuthnCredential.count({where:{tenantId:request.user.tenantId,userId:request.user.userId}}),
-      getCurrentAcknowledgement(request.user.tenantId,request.user.userId)
+      getCurrentAcknowledgement(request.user.tenantId,request.user.userId),
+      prisma.faceEnrollmentSubmission.findFirst({where:{tenantId:request.user.tenantId,employeeId:request.user.employeeId},orderBy:{submittedAt:'desc'},select:{status:true}})
     ]);
     if(!employee)return reply.code(403).send({error:'Vínculo de colaborador inativo'});
     if(employee.biometricLockedUntil&&employee.biometricLockedUntil>new Date())return reply.code(423).send({error:`Biometria temporariamente bloqueada até ${employee.biometricLockedUntil.toISOString()} após tentativas inválidas`,code:'BIOMETRIC_LOCKED'});
     if(!acknowledgement)return reply.code(409).send({error:'Leia e reconheça o aviso de tratamento biométrico em Minha segurança antes de registrar ponto',code:'BIOMETRIC_NOTICE_REQUIRED'});
-    if(policy.blockWithoutEnrollment&&policy.requireFaceMatch&&employee.faceEnrollmentStatus!=='ACTIVE')return reply.code(409).send({error:'Cadastro facial obrigatório antes de registrar ponto',code:'FACE_ENROLLMENT_REQUIRED'});
+    if(!credentialCount)return reply.code(409).send({error:'Cadastre a biometria digital/passkey antes de registrar ponto',code:'PLATFORM_BIOMETRIC_REQUIRED'});
+    const facePending=employee.faceEnrollmentStatus==='PENDING'&&Boolean(latestSubmission&&['PENDING','PROCESSING'].includes(latestSubmission.status));
+    if(policy.blockWithoutEnrollment&&policy.requireFaceMatch&&employee.faceEnrollmentStatus!=='ACTIVE'&&!facePending)return reply.code(409).send({error:'Cadastro facial obrigatório antes de registrar ponto',code:'FACE_ENROLLMENT_REQUIRED'});
     const challenge=await prisma.punchChallenge.create({data:{tenantId:request.user.tenantId,employeeId:employee.id,type,nonce:crypto.randomBytes(24).toString('base64url'),livenessAction:actions[crypto.randomInt(actions.length)],expiresAt:new Date(Date.now()+policy.challengeTtlSeconds*1000)}});
-    return {id:challenge.id,nonce:challenge.nonce,type,livenessAction:challenge.livenessAction,expiresAt:challenge.expiresAt,policy:{requireSelfie:policy.requireSelfie,requireFaceMatch:policy.requireFaceMatch,requireLiveness:policy.requireLiveness,requireAntiSpoof:policy.requireAntiSpoof,requirePlatformBiometric:policy.requirePlatformBiometric,requireGeofence:policy.requireGeofence,requireAccurateGps:policy.requireAccurateGps,requireDynamicQr:policy.requireDynamicQr,requireBluetoothBeacon:policy.requireBluetoothBeacon,requireNfcTag:policy.requireNfcTag,requireNetworkAttestation:policy.requireNetworkAttestation,requireTrustedDevice:policy.requireTrustedDevice,allowOffline:policy.allowOffline,offlineRequiresReview:policy.offlineRequiresReview,minFaceMatchScore:policy.minFaceMatchScore,minLivenessScore:policy.minLivenessScore,minAntiSpoofScore:policy.minAntiSpoofScore,minFaceQualityScore:policy.minFaceQualityScore,maxGpsAccuracyM:policy.maxGpsAccuracyM},faceEnrollmentStatus:employee.faceEnrollmentStatus,platformBiometricEnrolled:credentialCount>0};
+    const verificationMode=facePending?'DEVICE_ONLY_PENDING_FACE':'DEVICE_AND_FACE';
+    return {id:challenge.id,nonce:challenge.nonce,type,livenessAction:challenge.livenessAction,expiresAt:challenge.expiresAt,verificationMode,policy:{requireSelfie:facePending?false:policy.requireSelfie,requireFaceMatch:facePending?false:policy.requireFaceMatch,requireLiveness:facePending?false:policy.requireLiveness,requireAntiSpoof:facePending?false:policy.requireAntiSpoof,requirePlatformBiometric:true,requireGeofence:policy.requireGeofence,requireAccurateGps:policy.requireAccurateGps,requireDynamicQr:policy.requireDynamicQr,requireBluetoothBeacon:policy.requireBluetoothBeacon,requireNfcTag:policy.requireNfcTag,requireNetworkAttestation:policy.requireNetworkAttestation,requireTrustedDevice:policy.requireTrustedDevice,allowOffline:false,offlineRequiresReview:true,minFaceMatchScore:policy.minFaceMatchScore,minLivenessScore:policy.minLivenessScore,minAntiSpoofScore:policy.minAntiSpoofScore,minFaceQualityScore:policy.minFaceQualityScore,maxGpsAccuracyM:policy.maxGpsAccuracyM},faceEnrollmentStatus:employee.faceEnrollmentStatus,platformBiometricEnrolled:credentialCount>0};
   });
 
   app.post('/punches',{preHandler:[app.authenticate]},async(request:any,reply)=>{
     if(!request.user.employeeId)return reply.code(403).send({error:'Usuário sem vínculo de colaborador'});
-    const employee=await prisma.employee.findFirst({where:{id:request.user.employeeId,tenantId:request.user.tenantId,active:true},select:{id:true,biometricLockedUntil:true,failedBiometricAttempts:true}});if(!employee)return reply.code(403).send({error:'Vínculo de colaborador inativo'});
+    const employee=await prisma.employee.findFirst({where:{id:request.user.employeeId,tenantId:request.user.tenantId,active:true},select:{id:true,faceEnrollmentStatus:true,biometricLockedUntil:true,failedBiometricAttempts:true}});if(!employee)return reply.code(403).send({error:'Vínculo de colaborador inativo'});
     if(employee.biometricLockedUntil&&employee.biometricLockedUntil>new Date())return reply.code(423).send({error:`Biometria temporariamente bloqueada até ${employee.biometricLockedUntil.toISOString()}`,code:'BIOMETRIC_LOCKED'});
     const acknowledgement=await getCurrentAcknowledgement(request.user.tenantId,request.user.userId);
     if(!acknowledgement)return reply.code(409).send({error:'Ciência do aviso biométrico obrigatória antes da marcação',code:'BIOMETRIC_NOTICE_REQUIRED'});
@@ -83,8 +87,11 @@ export async function punchRoutes(app:FastifyInstance){
     if(duplicate)return reply.send({id:duplicate.id,recordNumber:duplicate.recordNumber.toString(),type:duplicate.type,occurredAt:duplicate.occurredAt,receivedAt:duplicate.receivedAt,integrityHash:duplicate.integrityHash,previousHash:duplicate.previousHash,decision:duplicate.decision,proof:duplicate.evidence,duplicate:true});
 
     const policy=await getOrCreateSecuritySettings(request.user.tenantId);
+    const latestSubmission=await prisma.faceEnrollmentSubmission.findFirst({where:{tenantId:request.user.tenantId,employeeId:employee.id},orderBy:{submittedAt:'desc'},select:{status:true}});
+    const facePending=employee.faceEnrollmentStatus==='PENDING'&&Boolean(latestSubmission&&['PENDING','PROCESSING'].includes(latestSubmission.status));
     const serverNow=new Date();
     if(body.offline){
+      if(facePending)return reply.code(409).send({error:'Enquanto o cadastro facial está em análise, a marcação provisória exige internet para validar a biometria digital.',code:'ONLINE_REQUIRED_DURING_FACE_REVIEW'});
       const ageMs=serverNow.getTime()-clientCapturedAt.getTime();
       if(ageMs>policy.maxOfflineAgeHours*3_600_000)return reply.code(400).send({error:`Marcação offline excede ${policy.maxOfflineAgeHours}h e não pode ser sincronizada automaticamente`});
       if(ageMs<-(policy.maxFutureClockSkewMinutes*60_000))return reply.code(400).send({error:'Relógio do dispositivo está adiantado além da tolerância permitida'});
@@ -100,10 +107,15 @@ export async function punchRoutes(app:FastifyInstance){
     } else if(!policy.allowOffline) return reply.code(403).send({error:'A empresa não permite marcação offline'});
 
     const biometric=await verifyBiometricProof(app,body.biometricProofToken,request.user,challengeId);
-    const face=await verifyFaceEvidence(request.user.tenantId,employee.id,{selfieDataUrl:body.selfieDataUrl,embedding:body.faceEmbedding,faceCount:body.faceCount,faceDetected:(body.faceCount??0)>0,faceQualityScore:body.faceQualityScore,livenessScore:body.livenessScore,antiSpoofScore:body.antiSpoofScore,livenessChallengePassed:body.livenessChallengePassed,livenessAction},`punch-${employee.id}`);
+    const face=facePending?{
+      storageKey:undefined,faceDetected:false,faceCount:0,faceQualityScore:0,faceMatchScore:0,faceVerified:false,livenessScore:0,livenessOk:false,antiSpoofScore:0,antiSpoofOk:false,
+      missing:[] as string[],reasons:['Cadastro facial ainda em análise: identidade provisoriamente confirmada pela biometria digital/passkey do dispositivo']
+    }:await verifyFaceEvidence(request.user.tenantId,employee.id,{selfieDataUrl:body.selfieDataUrl,embedding:body.faceEmbedding,faceCount:body.faceCount,faceDetected:(body.faceCount??0)>0,faceQualityScore:body.faceQualityScore,livenessScore:body.livenessScore,antiSpoofScore:body.antiSpoofScore,livenessChallengePassed:body.livenessChallengePassed,livenessAction},`punch-${employee.id}`);
     const presence=await evaluatePresence({tenantId:request.user.tenantId,employeeId:employee.id,latitude:body.latitude,longitude:body.longitude,accuracyM:body.accuracyM,altitudeM:body.altitudeM,altitudeAccuracyM:body.altitudeAccuracyM,headingDeg:body.headingDeg,speedMps:body.speedMps,locationCapturedAt:body.locationCapturedAt,deviceFingerprint:body.deviceFingerprint,dynamicQrToken:body.dynamicQrToken,networkGatewayToken:body.networkGatewayToken,bluetoothName:body.bluetoothName,nfcTagId:body.nfcTagId});
     const appIntegrityStatus=webIntegrityStatus(request,body.clientSecureContext);
-    const proof=evaluateProof({policy,offline:body.offline,challengeVerified,selfiePresent:Boolean(body.selfieDataUrl),face,presence,deviceFingerprint:body.deviceFingerprint,platformBiometricVerified:biometric.verified,webAuthnCredentialId:biometric.credentialId,appIntegrityStatus});
+    const effectivePolicy={...policy,requirePlatformBiometric:true,...(facePending?{requireSelfie:false,requireFaceMatch:false,requireLiveness:false,requireAntiSpoof:false,blockWithoutEnrollment:false,blockOnFaceFailure:false}:{})};
+    const evaluated=evaluateProof({policy:effectivePolicy,offline:body.offline,challengeVerified,selfiePresent:Boolean(body.selfieDataUrl),face,presence,deviceFingerprint:body.deviceFingerprint,platformBiometricVerified:biometric.verified,webAuthnCredentialId:biometric.credentialId,appIntegrityStatus});
+    const proof=facePending&&evaluated.decision!=='BLOCKED'?{...evaluated,score:Math.min(evaluated.score,89),proofLevel:'PROVISORIA_BIOMETRIA_DISPOSITIVO',decision:'APPROVED' as const,reasons:[...evaluated.reasons,'Reconhecimento facial ainda em análise; esta marcação foi aceita provisoriamente com biometria digital e fica registrada com nível de prova provisório até a ativação facial.']}:evaluated;
 
     if(proof.decision==='BLOCKED'){
       const reason=`Marcação bloqueada: ${proof.missingRequirements.join(', ')||'política de segurança'}`;
@@ -127,7 +139,7 @@ export async function punchRoutes(app:FastifyInstance){
     const decision=proof.decision==='REVIEW'||sequenceOdd?PunchDecision.REVIEW:PunchDecision.APPROVED;
     const punch=await createImmutablePunch({tenantId:request.user.tenantId,clientEventId:body.clientEventId,employeeId:employee.id,actorUserId:request.user.userId,type:body.type,occurredAt,timezone:body.timezone,source:body.offline?'WEB_PWA_OFFLINE_SYNC':'WEB_PWA',offline:body.offline,decision,reviewReason:sequenceOdd?'Sequência de marcação fora do fluxo esperado':proof.decision==='REVIEW'?'Política exige revisão':undefined,evidence:{
       challengeId,latitude:body.latitude,longitude:body.longitude,accuracyM:body.accuracyM,worksiteId:presence.worksiteId,geofenceOk:presence.geofenceOk,deviceFingerprint:body.deviceFingerprint,deviceTrusted:presence.deviceTrusted,
-      selfieStorageKey:face.storageKey,selfieCapturedAt:new Date(),clientCapturedAt,faceDetected:face.faceDetected,faceCount:face.faceCount,faceQualityScore:face.faceQualityScore,faceMatchScore:face.faceMatchScore,faceVerified:face.faceVerified,
+      selfieStorageKey:face.storageKey,selfieCapturedAt:body.selfieDataUrl?new Date():undefined,clientCapturedAt,faceDetected:face.faceDetected,faceCount:face.faceCount,faceQualityScore:face.faceQualityScore,faceMatchScore:face.faceMatchScore,faceVerified:face.faceVerified,
       livenessScore:face.livenessScore,livenessOk:face.livenessOk,antiSpoofScore:face.antiSpoofScore,antiSpoofOk:face.antiSpoofOk,livenessAction,livenessChallengePassed:Boolean(body.livenessChallengePassed),platformBiometricVerified:biometric.verified,webAuthnCredentialId:biometric.credentialId,
       mockLocationRisk:presence.mockLocationRisk,gpsAccuracyOk:presence.accuracyOk,appIntegrityStatus,locationTelemetry:presence.locationTelemetry,riskSignals:presence.riskSignals,networkAttested:presence.networkAttested,bluetoothAttested:presence.bluetoothAttested,nfcAttested:presence.nfcAttested,dynamicQrAttested:presence.dynamicQrAttested,offlinePayloadHash:body.offlinePayloadHash,
       proofScore:proof.score,proofLevel:proof.proofLevel,reasons:proof.reasons,missingRequirements:proof.missingRequirements

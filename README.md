@@ -1,4 +1,11 @@
-# PontoProof v0.4.5
+# PontoProof v0.4.6
+
+## Fluxo v0.4.6: análise facial sem bloquear o usuário
+
+Após trocar a senha, reconhecer o aviso biométrico, enviar as três fotos e cadastrar a passkey/biometria do dispositivo, o usuário já pode acessar o sistema enquanto o servidor analisa o rosto. Durante esse intervalo, a marcação exige somente WebAuthn (Windows Hello, impressão digital, Touch ID, Face ID/passkey) e fica com nível de prova provisório. Quando a análise aprovar o cadastro facial, o sistema troca automaticamente para o modo completo: WebAuthn + selfie/reconhecimento facial/liveness/antispoof em cada marcação.
+
+A tela de login oferece três caminhos: senha, biometria/passkey e reconhecimento facial. O login facial só é liberado depois que o template facial estiver `ACTIVE`; ele captura duas imagens rápidas e faz a comparação no servidor, sem carregar IA no navegador e sem persistir essas imagens de login.
+
 
 ## Cadastro facial sem espera (v0.4)
 

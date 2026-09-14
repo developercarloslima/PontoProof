@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.6 — acesso liberado durante análise facial + login biométrico
+
+- O usuário não fica mais preso na tela de primeiro acesso enquanto o servidor processa as 3 fotos.
+- Assim que senha, ciência biométrica, envio das fotos e passkey/biometria do dispositivo estiverem concluídos, o usuário já pode entrar no PontoProof mesmo com a face em `PENDING/PROCESSING`.
+- Durante a análise facial, cada marcação exige somente a biometria digital/passkey; a prova fica marcada como `PROVISORIA_BIOMETRIA_DISPOSITIVO` e não recebe integridade máxima.
+- Assim que o cadastro facial é aprovado, as marcações passam automaticamente a exigir biometria digital/passkey + selfie/reconhecimento facial/liveness/antispoof.
+- Se as fotos forem rejeitadas, o usuário volta somente para a etapa facial e recebe um pop-up com os motivos; senha, ciência e passkey são preservadas.
+- A aplicação acompanha o job facial em segundo plano e avisa com pop-up quando o cadastro for aprovado.
+- Login passwordless por Windows Hello, impressão digital, Touch ID, Face ID/passkey via WebAuthn.
+- Login por reconhecimento facial para usuários com template facial ativo. O navegador só captura duas imagens rápidas; a comparação é feita no backend.
+- Login facial não persiste as imagens capturadas para autenticação.
+- A marcação provisória durante análise facial exige internet, pois a prova WebAuthn precisa ser validada pelo servidor.
+- Health/version atualizado para `0.4.6`.
+
 ## 0.4.5 — recuperação seletiva do onboarding facial
 
 - Migração automática dos cadastros faciais iniciados nas versões que salvavam fotos em `/tmp`.

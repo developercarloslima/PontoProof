@@ -7,7 +7,7 @@ export type SessionUser = {
   employeeId?: string;
   name: string;
   tenant: string;
-  onboarding?: { required:boolean; mustChangePassword:boolean; passwordChanged:boolean; biometricNoticeAcknowledged:boolean; faceEnrolled:boolean; platformBiometricEnrolled:boolean; completed:boolean; completedAt?:string|null };
+  onboarding?: { required:boolean; accessReady?:boolean; mustChangePassword:boolean; passwordChanged:boolean; biometricNoticeAcknowledged:boolean; faceEnrolled:boolean; facePending?:boolean; faceEnrollmentStatus?:string|null; faceEnrollmentSubmissionStatus?:string|null; platformBiometricEnrolled:boolean; completed:boolean; completedAt?:string|null };
 };
 
 export function getToken() { return localStorage.getItem('pontoproof_token'); }

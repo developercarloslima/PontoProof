@@ -3,10 +3,12 @@ import { recoverLegacyTmpFaceEnrollmentForUser } from './face-enrollment-async.s
 
 export type OnboardingState = {
   required: boolean;
+  accessReady: boolean;
   mustChangePassword: boolean;
   passwordChanged: boolean;
   biometricNoticeAcknowledged: boolean;
   faceEnrolled: boolean;
+  facePending: boolean;
   faceEnrollmentStatus: string | null;
   faceEnrollmentSubmissionStatus: string | null;
   faceEnrollmentSubmissionId: string | null;
@@ -16,9 +18,8 @@ export type OnboardingState = {
 };
 
 export async function getOnboardingState(userId: string): Promise<OnboardingState> {
-  // Recover legacy Render /tmp jobs before calculating the onboarding step.
-  // This migration only resets the face-photo stage and intentionally preserves
-  // password, biometric notice acknowledgement and WebAuthn credentials.
+  // Jobs antigos do Render que dependiam de /tmp voltam somente para a etapa
+  // facial. Senha, ciência biométrica e passkey permanecem intactas.
   await recoverLegacyTmpFaceEnrollmentForUser(userId);
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -34,14 +35,23 @@ export async function getOnboardingState(userId: string): Promise<OnboardingStat
   const biometricNoticeAcknowledged = user.biometricAcknowledgements.length > 0;
   const faceEnrolled = user.employee?.faceEnrollmentStatus === 'ACTIVE';
   const latestSubmission=user.employee?.faceEnrollmentSubmissions?.[0]??null;
+  const facePending = user.employee?.faceEnrollmentStatus === 'PENDING' && Boolean(latestSubmission && ['PENDING','PROCESSING'].includes(latestSubmission.status));
   const platformBiometricEnrolled = user.webAuthnCredentials.length > 0;
+
+  // Usuário pode entrar no sistema enquanto as fotos estão sendo analisadas,
+  // desde que senha, ciência e biometria do dispositivo já estejam concluídas.
+  // Nesse período a marcação exige WebAuthn e fica provisória até a face ativar.
+  const accessReady = passwordChanged && biometricNoticeAcknowledged && platformBiometricEnrolled && (faceEnrolled || facePending);
   const completed = passwordChanged && biometricNoticeAcknowledged && faceEnrolled && platformBiometricEnrolled;
+
   return {
-    required: !completed,
+    required: !accessReady,
+    accessReady,
     mustChangePassword,
     passwordChanged,
     biometricNoticeAcknowledged,
     faceEnrolled,
+    facePending,
     faceEnrollmentStatus:user.employee?.faceEnrollmentStatus??null,
     faceEnrollmentSubmissionStatus:latestSubmission?.status??null,
     faceEnrollmentSubmissionId:latestSubmission?.id??null,

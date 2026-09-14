@@ -58,13 +58,13 @@ app.decorate('authenticate', async function(request: any, reply: any) {
   const onboardingDynamicAllowed = path.startsWith('/security/face-enrollment/submission/') && path.endsWith('/retry');
   if (!onboardingAllowed.includes(path) && !onboardingDynamicAllowed) {
     const onboarding = await getOnboardingState(request.user.userId);
-    if (!onboarding.completed) return reply.code(428).send({ error: 'Primeiro acesso incompleto. Troque a senha e conclua o cadastro facial e biométrico.', code: 'ONBOARDING_REQUIRED', onboarding });
+    if (!onboarding.accessReady) return reply.code(428).send({ error: 'Primeiro acesso incompleto. Troque a senha, reconheça o aviso, envie as fotos e cadastre a biometria do dispositivo.', code: 'ONBOARDING_REQUIRED', onboarding });
   }
 });
 
 declare module 'fastify' { interface FastifyInstance { authenticate: any } }
 
-app.get('/health', async () => ({ ok: true, service: 'pontoproof', version: '0.4.5', at: new Date().toISOString() }));
+app.get('/health', async () => ({ ok: true, service: 'pontoproof', version: '0.4.6', at: new Date().toISOString() }));
 await app.register(authRoutes);
 await app.register(meRoutes);
 await app.register(punchRoutes);

@@ -12,7 +12,7 @@ async function main() {
   });
 
   await prisma.attendanceSecuritySettings.upsert({
-    where: { tenantId: tenant.id }, update: {}, create: { tenantId: tenant.id, requireSelfie: true, requireFaceMatch: true, requireLiveness: true, requireAntiSpoof: true, blockWithoutEnrollment: true, blockOnFaceFailure: true, requireAccurateGps: true, allowOffline: true, offlineRequiresReview: true }
+    where: { tenantId: tenant.id }, update: {}, create: { tenantId: tenant.id, requireSelfie: true, requireFaceMatch: true, requireLiveness: true, requireAntiSpoof: true, requirePlatformBiometric: true, blockWithoutEnrollment: true, blockOnFaceFailure: true, requireAccurateGps: true, allowOffline: true, offlineRequiresReview: true }
   });
 
   await prisma.timeRuleSettings.upsert({

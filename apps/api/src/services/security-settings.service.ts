@@ -5,6 +5,7 @@ const mandatoryCore = {
   requireFaceMatch:true,
   requireLiveness:true,
   requireAntiSpoof:true,
+  requirePlatformBiometric:true,
   blockWithoutEnrollment:true,
   blockOnFaceFailure:true,
   maxFaceCount:1,

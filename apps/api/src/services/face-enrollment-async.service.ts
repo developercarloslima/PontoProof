@@ -145,6 +145,18 @@ async function analyzePhoto(photo:StoredPhoto):Promise<ProcessedPhoto>{
   return detectDecoded(photo,decoded,human);
 }
 
+export async function analyzeFaceLoginDataUrl(imageDataUrl:string){
+  const saved=encryptImageDataUrlForDatabase(imageDataUrl);
+  const processed=await analyzePhoto({pose:FacePose.FRONT,encryptedData:saved.encryptedData,mime:saved.mime,byteLength:saved.byteLength});
+  return {
+    embedding:processed.embedding,
+    quality:processed.quality,
+    liveness:processed.liveness,
+    antiSpoof:processed.antiSpoof,
+    faceCount:processed.faceCount
+  };
+}
+
 export async function createAsyncFaceEnrollment(input:{tenantId:string;employeeId:string;userId:string;photos:EnrollmentPhoto[]}){
   const required=[FacePose.FRONT,FacePose.LEFT,FacePose.RIGHT];
   if(input.photos.length!==required.length)throw new Error('Envie exatamente 3 fotos: frontal, esquerda e direita');

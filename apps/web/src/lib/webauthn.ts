@@ -14,3 +14,9 @@ export async function performPlatformBiometric(punchChallengeId:string){
   const response=await startAuthentication({optionsJSON:options});
   return api<{verified:boolean;biometricProofToken:string;credentialId:string}>('/security/webauthn/auth/verify',{method:'POST',body:JSON.stringify(response)});
 }
+export async function loginWithPlatformBiometric(email:string,tenantDocument?:string){
+  if(!browserSupportsWebAuthn())throw new Error('Biometria/passkey indisponível neste navegador.');
+  const start=await api<any>('/auth/webauthn/options',{method:'POST',body:JSON.stringify({email,...(tenantDocument?{tenantDocument}:{})})});
+  const response=await startAuthentication({optionsJSON:start.options});
+  return api<any>('/auth/webauthn/verify',{method:'POST',body:JSON.stringify({challengeId:start.challengeId,response})});
+}
