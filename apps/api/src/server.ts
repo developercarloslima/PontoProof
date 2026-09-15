@@ -21,7 +21,7 @@ import { auditRoutes } from './routes/audit.js';
 import { securityRoutes } from './routes/security.js';
 import { runBiometricRetention } from './services/retention.service.js';
 import { getOnboardingState } from './services/onboarding.service.js';
-import { runFaceEnrollmentWorkerOnce } from './services/face-enrollment-async.service.js';
+import { prewarmFaceEngines, runFaceEnrollmentWorkerOnce } from './services/face-enrollment-async.service.js';
 
 const app = Fastify({ logger: true, bodyLimit: 8 * 1024 * 1024 });
 
@@ -64,7 +64,7 @@ app.decorate('authenticate', async function(request: any, reply: any) {
 
 declare module 'fastify' { interface FastifyInstance { authenticate: any } }
 
-app.get('/health', async () => ({ ok: true, service: 'pontoproof', version: '0.4.6', at: new Date().toISOString() }));
+app.get('/health', async () => ({ ok: true, service: 'pontoproof', version: '0.4.7', at: new Date().toISOString() }));
 await app.register(authRoutes);
 await app.register(meRoutes);
 await app.register(punchRoutes);
@@ -104,6 +104,10 @@ retentionTimer.unref();
 setTimeout(()=>runBiometricRetention().catch(err=>app.log.error(err,'initial biometric retention failed')),15_000).unref();
 
 // Durable asynchronous enrollment worker: jobs live in PostgreSQL and are resumed after restarts.
-const faceWorkerTimer=setInterval(()=>runFaceEnrollmentWorkerOnce().catch(err=>app.log.error(err,'async face enrollment worker failed')),2500);
+const faceWorkerTimer=setInterval(()=>runFaceEnrollmentWorkerOnce().catch(err=>app.log.error(err,'async face enrollment worker failed')),500);
 faceWorkerTimer.unref();
-setTimeout(()=>runFaceEnrollmentWorkerOnce().catch(err=>app.log.error(err,'initial async face enrollment worker failed')),3000).unref();
+setTimeout(()=>runFaceEnrollmentWorkerOnce().catch(err=>app.log.error(err,'initial async face enrollment worker failed')),350).unref();
+
+// Warm the lightweight reference engine first, then the secure liveness engine.
+// This happens after the HTTP port is open, so deploy health checks are not delayed.
+setTimeout(()=>prewarmFaceEngines().catch(err=>app.log.error(err,'face engine prewarm failed')),100).unref();

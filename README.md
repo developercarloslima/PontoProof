@@ -1,6 +1,6 @@
-# PontoProof v0.4.6
+# PontoProof v0.4.7
 
-## Fluxo v0.4.6: análise facial sem bloquear o usuário
+## Fluxo v0.4.7: análise facial rápida sem bloquear o usuário
 
 Após trocar a senha, reconhecer o aviso biométrico, enviar as três fotos e cadastrar a passkey/biometria do dispositivo, o usuário já pode acessar o sistema enquanto o servidor analisa o rosto. Durante esse intervalo, a marcação exige somente WebAuthn (Windows Hello, impressão digital, Touch ID, Face ID/passkey) e fica com nível de prova provisório. Quando a análise aprovar o cadastro facial, o sistema troca automaticamente para o modo completo: WebAuthn + selfie/reconhecimento facial/liveness/antispoof em cada marcação.
 
@@ -18,12 +18,12 @@ No primeiro acesso, o PontoProof usa um fluxo **capture-first**:
 5. um worker no backend processa as imagens em segundo plano;
 6. o frontend consulta o status e mostra um popup de aprovação ou recaptura.
 
-O processamento servidor verifica face única, qualidade, liveness passivo, antispoof, extrai embeddings e compara as três fotos entre si. Uma falha técnica pode ser reprocessada sem pedir novas fotos. Uma rejeição biométrica pede nova captura e informa os motivos.
+O processamento inicial foi otimizado para velocidade: a foto frontal gera a assinatura facial e as fotos esquerda/direita validam presença e qualidade. Liveness e antispoof continuam obrigatórios nas autenticações faciais ao vivo e nas marcações, onde o backend executa o motor seguro. Uma falha técnica pode ser reprocessada sem pedir novas fotos; uma rejeição pede nova captura e informa os motivos.
 
 > A marcação de ponto continua usando confirmação facial síncrona. O fluxo assíncrono desta versão é para **enrollment/cadastro inicial**, não para aceitar uma batida antes de validar a identidade.
 
 
-Na v0.4 o cadastro inicial não carrega modelos de IA no navegador: a câmera captura três fotos imediatamente e o backend processa em segundo plano. Os modelos em `/models/human/` continuam disponíveis apenas para as validações síncronas de marcação de ponto.
+Na v0.4.7 o navegador não carrega mais o pipeline Human para bater ponto. A câmera captura a selfie imediatamente e o backend, já pré-aquecido, calcula face match, liveness, antispoof e o gesto exigido.
 
 # PontoProof v0.3.8 — Primeiro acesso biométrico otimizado
 
@@ -192,3 +192,17 @@ As novas imagens ficam temporariamente criptografadas no PostgreSQL até o proce
 ## Persistência do onboarding facial no Render (v0.4.4)
 
 As fotos do cadastro facial assíncrono ficam criptografadas temporariamente no PostgreSQL enquanto aguardam o worker. Isso evita perda de evidência quando o filesystem efêmero do Render é reiniciado. Após a decisão biométrica, as imagens temporárias são removidas e apenas os embeddings criptografados necessários ao reconhecimento permanecem.
+
+## Desempenho facial v0.4.7
+
+O fluxo facial foi otimizado para não executar três pipelines completos no cadastro. A foto frontal gera o template facial; as fotos esquerda/direita passam por detecção e qualidade. O servidor pré-aquece os modelos e inicia o job imediatamente após o envio.
+
+A meta em instância já ativa é concluir o cadastro facial em até 8 segundos e manter qualquer operação facial interativa dentro de 10 segundos. O PontoProof registra `processingMs` no job para permitir medir isso em produção.
+
+**Importante:** o plano Free do Render dorme após inatividade. Um cold start da plataforma está fora do controle do código e pode exceder 10 segundos. Para uma garantia operacional de 10 s, utilize um serviço Render always-on (Starter ou superior) ou outro compute sempre ativo.
+
+### Leitura facial rápida nas marcações
+
+A v0.4.7 remove o pipeline Human do navegador durante a batida de ponto. O funcionário confirma primeiro a biometria/passkey do aparelho, a câmera abre imediatamente e captura uma selfie após uma ação simples (virar à esquerda/direita ou olhar para cima/baixo). O backend, com o motor facial pré-aquecido, calcula face match, qualidade, liveness e antispoof. O cliente não baixa/compila modelos de IA para registrar ponto.
+
+O endpoint de marcação possui deadline de 8,5 segundos para o processamento facial; se a infraestrutura estiver lenta, a tentativa retorna erro em vez de ficar presa indefinidamente.

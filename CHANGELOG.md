@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.4.7 — Fast Face SLA
+
+- Cadastro facial passa a iniciar imediatamente após o upload, sem esperar o timer do worker.
+- Worker assíncrono consulta a fila a cada 500 ms.
+- Motor facial de cadastro dividido em modo detector e modo descriptor leve.
+- Apenas a foto frontal gera a assinatura facial; esquerda/direita validam presença e qualidade, removendo duas inferências pesadas.
+- Selfies são reduzidas internamente para 224–288 px antes da inferência WASM.
+- Motores de face são pré-aquecidos depois que a API abre a porta HTTP.
+- Motor seguro (liveness + antispoof) aquece depois, sem disputar CPU com o cadastro inicial.
+- Login facial usa uma inferência segura + uma inferência leve, com deadline de 8,5 s.
+- O navegador deixa de carregar IA facial para bater ponto: ele apenas abre a câmera e envia uma selfie compacta.
+- Face match, qualidade, liveness, antispoof e validação do gesto da marcação passam a ser calculados no backend já aquecido.
+- Desafios de marcação usam poses verificáveis em uma única imagem (esquerda, direita, cima, baixo), eliminando espera de modelos no celular.
+- Enquanto o app permanece aberto, uma chamada de health a cada 4 minutos mantém a instância ativa durante a jornada.
+- Tempo de processamento do cadastro facial passa a ser registrado para medição do SLA.
+
+> Meta operacional: 3–8 s com a instância já ativa. O plano Free do Render pode levar cerca de um minuto para acordar após 15 min sem tráfego; para SLA real de até 10 s, use instância always-on.
+
 ## 0.4.6 — acesso liberado durante análise facial + login biométrico
 
 - O usuário não fica mais preso na tela de primeiro acesso enquanto o servidor processa as 3 fotos.

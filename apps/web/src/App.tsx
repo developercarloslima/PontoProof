@@ -18,6 +18,12 @@ export default function App(){
 
  useEffect(()=>{if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(()=>{});},[]);
  useEffect(()=>{if(user?.role==='AUDITOR')setTab('auditoria');},[user?.role]);
+ // While the app is open during a work shift, keep the Render service warm.
+ useEffect(()=>{
+   if(!user)return;
+   const ping=()=>fetch('/health',{cache:'no-store'}).catch(()=>undefined);
+   ping();const timer=window.setInterval(ping,4*60*1000);return()=>window.clearInterval(timer);
+ },[user?.id]);
  useEffect(()=>{
    if(!user){setOnboardingChecked(true);return;}
    setOnboardingChecked(false);
@@ -43,7 +49,7 @@ export default function App(){
        if(!wasFace&&nowFace)setFaceApprovedPopup(true);
        previousFaceEnrolled.current=nowFace;
      }catch{}
-   },3000);
+   },1000);
    return()=>window.clearInterval(timer);
  },[user?.id,user?.onboarding?.required,user?.onboarding?.faceEnrolled,user?.onboarding?.facePending,user?.onboarding?.faceEnrollmentSubmissionStatus]);
 

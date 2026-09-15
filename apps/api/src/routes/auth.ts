@@ -10,7 +10,7 @@ import {
 } from '@simplewebauthn/server';
 import { prisma } from '../lib/prisma.js';
 import { getOnboardingState, refreshOnboardingCompletion } from '../services/onboarding.service.js';
-import { analyzeFaceLoginDataUrl } from '../services/face-enrollment-async.service.js';
+import { analyzeFaceLoginDataUrl, analyzeFaceReferenceDataUrl } from '../services/face-enrollment-async.service.js';
 import { decryptJson } from '../services/biometric-storage.service.js';
 import { getOrCreateSecuritySettings } from '../services/security-settings.service.js';
 
@@ -38,6 +38,16 @@ function cosine(a:number[],b:number[]){
   let dot=0,aa=0,bb=0;
   for(let i=0;i<a.length;i++){dot+=a[i]*b[i];aa+=a[i]*a[i];bb+=b[i]*b[i];}
   return aa&&bb?Math.max(0,Math.min(1,dot/(Math.sqrt(aa)*Math.sqrt(bb)))):0;
+}
+
+async function within<T>(promise:Promise<T>,ms:number,message:string):Promise<T>{
+  let timer:ReturnType<typeof setTimeout>|undefined;
+  try{
+    return await Promise.race([
+      promise,
+      new Promise<T>((_,reject)=>{timer=setTimeout(()=>reject(new Error(message)),ms);})
+    ]);
+  }finally{if(timer)clearTimeout(timer);}
 }
 
 async function findLoginUser(input:{email:string;tenantDocument?:string}){
@@ -125,10 +135,13 @@ export async function authRoutes(app: FastifyInstance) {
 
     try{
       const policy=await getOrCreateSecuritySettings(challenge.tenantId);
-      const first=await analyzeFaceLoginDataUrl(body.images[0]);
-      const second=await analyzeFaceLoginDataUrl(body.images[1]);
-      const samples=[first,second];
-      const basicOk=samples.every(s=>s.faceCount===1&&s.embedding.length>=64&&s.quality>=policy.minFaceQualityScore&&s.liveness>=policy.minLivenessScore&&s.antiSpoof>=policy.minAntiSpoofScore);
+      // One secure inference (liveness + antispoof) plus one lightweight descriptor
+      // is enough for a two-frame facial login and avoids running all heavy models twice.
+      const [first,second]=await within(Promise.all([
+        analyzeFaceLoginDataUrl(body.images[0]),
+        analyzeFaceReferenceDataUrl(body.images[1])
+      ]),8500,'A leitura facial excedeu 8,5 segundos');
+      const basicOk=first.faceCount===1&&first.embedding.length>=64&&first.quality>=policy.minFaceQualityScore&&first.liveness>=policy.minLivenessScore&&first.antiSpoof>=policy.minAntiSpoofScore&&second.faceCount===1&&second.embedding.length>=64&&second.quality>=policy.minFaceQualityScore;
       const consistency=cosine(first.embedding,second.embedding);
       const refs=await prisma.faceReference.findMany({where:{tenantId:challenge.tenantId,employeeId:employee.id,revokedAt:null,embeddingEncrypted:{not:null}}});
       let bestMatch=0;

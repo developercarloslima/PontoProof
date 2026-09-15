@@ -12,11 +12,11 @@ const steps:{pose:Pose;title:string;instruction:string}[]=[
 
 function captureFrame(video:HTMLVideoElement){
   const sw=video.videoWidth||640,sh=video.videoHeight||480;
-  const width=Math.min(720,sw);const height=Math.max(1,Math.round(sh*(width/sw)));
+  const width=Math.min(560,sw);const height=Math.max(1,Math.round(sh*(width/sw)));
   const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
   const ctx=canvas.getContext('2d');if(!ctx)throw new Error('Canvas indisponível');
   ctx.drawImage(video,0,0,width,height);
-  return canvas.toDataURL('image/jpeg',0.82);
+  return canvas.toDataURL('image/jpeg',0.76);
 }
 
 export default function QuickFaceEnrollmentCapture({onSubmit,onCancel}:Props){

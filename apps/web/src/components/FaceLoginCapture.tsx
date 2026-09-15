@@ -4,12 +4,12 @@ type Props={onCapture:(images:string[])=>Promise<void>|void;onCancel:()=>void};
 
 function capture(video:HTMLVideoElement){
   const canvas=document.createElement('canvas');
-  const width=Math.max(480,Math.min(720,video.videoWidth||640));
+  const width=Math.max(420,Math.min(560,video.videoWidth||640));
   const ratio=(video.videoHeight||480)/(video.videoWidth||640);
   canvas.width=width;canvas.height=Math.round(width*ratio);
   const ctx=canvas.getContext('2d');if(!ctx)throw new Error('Canvas indisponível');
   ctx.drawImage(video,0,0,canvas.width,canvas.height);
-  return canvas.toDataURL('image/jpeg',0.86);
+  return canvas.toDataURL('image/jpeg',0.78);
 }
 
 export default function FaceLoginCapture({onCapture,onCancel}:Props){

@@ -18,7 +18,7 @@ import { readEncryptedImage } from '../services/biometric-storage.service.js';
 import { acknowledgeBiometricNotice, BIOMETRIC_NOTICE_HASH, BIOMETRIC_NOTICE_TEXT, BIOMETRIC_NOTICE_VERSION, getCurrentAcknowledgement } from '../services/biometric-notice.service.js';
 import { enrollFaceReference } from '../services/face-enrollment.service.js';
 import { refreshOnboardingCompletion } from '../services/onboarding.service.js';
-import { createAsyncFaceEnrollment, publicSubmission, recoverLegacyTmpFaceEnrollmentForUser, retryFaceEnrollmentSubmission } from '../services/face-enrollment-async.service.js';
+import { createAsyncFaceEnrollment, kickFaceEnrollmentWorker, publicSubmission, recoverLegacyTmpFaceEnrollmentForUser, retryFaceEnrollmentSubmission } from '../services/face-enrollment-async.service.js';
 
 function getWebAuthnConfig(){
   const renderHostname=process.env.RENDER_EXTERNAL_HOSTNAME?.trim();
@@ -95,7 +95,8 @@ export async function securityRoutes(app: FastifyInstance) {
     if(!acknowledgement)return reply.code(409).send({error:'Registre a ciência do aviso biométrico antes do cadastro facial'});
     const body=z.object({photos:z.array(z.object({pose:z.nativeEnum(FacePose),imageDataUrl:z.string().min(100)})).length(3)}).parse(request.body);
     const submission=await createAsyncFaceEnrollment({tenantId:request.user.tenantId,employeeId:request.user.employeeId,userId:request.user.userId,photos:body.photos});
-    return reply.code(202).send({submission:publicSubmission(submission),message:'Fotos recebidas. A análise facial continuará no servidor em segundo plano.'});
+    kickFaceEnrollmentWorker();
+    return reply.code(202).send({submission:publicSubmission(submission),message:'Fotos recebidas. A análise rápida foi iniciada imediatamente no servidor.'});
   });
 
   app.get('/security/face-enrollment/submission/latest', { preHandler:[app.authenticate] }, async (request:any, reply) => {
